@@ -394,6 +394,9 @@ function restoreInitPerformance(){
 }
 function selectUserPerformance(slot){
  const out=chosenMidiOutput();if(!out)return;
+ // Every recalled User Performance starts with Part 1 selected in the UI,
+ // even when the stored mode is Layer or Split.
+ activePart=1;updateOutput();
  modWheelPosition=0;syncModWheel();
  if(performanceControlChannel===16){$("midiNotice").textContent="Performance Control Channel is OFF; User Performance recall is unavailable.";return;}
  const isEmptyPreset=(presetNames[slot]||"").trim()==="INIT PERFORM";
