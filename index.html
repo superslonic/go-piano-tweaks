@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#101522">
-<title>Roland GO:Piano Tweaks v50</title>
+<title>GO:Piano Tweaks</title>
 <style>
 :root{color-scheme:dark;--bg:#10141b;--panel:#1b222c;--line:#37414f;--text:#f1f4f8;--muted:#a5afbd;--accent:#8bbcff;--green:#8ce0b6}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font:14px/1.25 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -38,7 +38,7 @@
 </head>
 <body>
 <div class="wrap">
-<header class="top"><div class="brand">Roland GO:Piano Tweaks</div><div class="status" id="midiStatus">Not connected</div></header>
+<header class="top"><div class="brand">GO:Piano Tweaks</div><div class="status" id="midiStatus">Not connected</div></header>
 <main>
 <section class="card">
 <div class="cardhead">MIDI</div>
@@ -72,7 +72,7 @@
 <div class="part part-card" id="part1Card">
 <div class="field patchfield"><label for="patch1">Patch:</label><div class="patchpicker"><select id="patch1" aria-label="Part 1 patch"></select><div class="patchnavstack"><button type="button" class="btn patchnav" id="prevPatch1" aria-label="Previous Part 1 patch">▲</button><button type="button" class="btn patchnav" id="nextPatch1" aria-label="Next Part 1 patch">▼</button></div></div></div>
 <div class="field patchfield"><label for="cat1">Category:</label><select id="cat1" aria-label="Part 1 category"></select></div>
-<div class="grid2"><div class="field octrow"><label for="oct1">Octave Shift</label><div class="octcontrol"><button type="button" class="btn stepbtn" id="oct1Minus" aria-label="Decrease Part 1 octave">−</button><span class="digital-display" id="oct1Value" aria-label="Part 1 Octave Shift"></span><button type="button" class="btn stepbtn" id="oct1Plus" aria-label="Increase Part 1 octave">+</button><select id="oct1" class="hidden" aria-hidden="true" tabindex="-1"></select></div></div><div class="field"><label for="vol1">Volume</label><div class="sliderwrap"><input class="slider" id="vol1Slider" type="range" min="0" max="127" value="100" aria-label="Part 1 Volume slider"><input class="slidernum" id="vol1" type="number" min="0" max="127" value="100" inputmode="numeric"></div></div></div><label class="resonance" id="resonanceControl"><input type="checkbox" id="pianoResonance" checked><span class="switchtrack" aria-hidden="true"></span><span id="resonanceText">Piano Damper Resonance: ON</span></label>
+<div class="grid2"><div class="field octrow"><label for="oct1">Octave Shift</label><div class="octcontrol"><button type="button" class="btn stepbtn" id="oct1Minus" aria-label="Decrease Part 1 octave">−</button><span class="digital-display" id="oct1Value" aria-label="Part 1 Octave Shift"></span><button type="button" class="btn stepbtn" id="oct1Plus" aria-label="Increase Part 1 octave">+</button><select id="oct1" class="hidden" aria-hidden="true" tabindex="-1"></select></div></div><div class="field"><label for="vol1">Volume</label><div class="sliderwrap"><input class="slider" id="vol1Slider" type="range" min="0" max="127" value="100" aria-label="Part 1 Volume slider"><input class="slidernum" id="vol1" type="number" min="0" max="127" value="100" inputmode="numeric"></div></div></div><label class="resonance" id="resonanceControl"><input type="checkbox" id="pianoResonance" checked><span class="switchtrack" aria-hidden="true"></span><span id="resonanceText">Sustain Pedal Resonance: ON</span></label>
 
 </div>
 </section>
@@ -203,7 +203,7 @@ function activationMessages(part){if(part===2)return [message([0x50,0x01],[0x01]
 function defaultResonance(p){if(!p)return false;if(p.category==="Acoustic Piano")return true;if(p.category==="GO:Piano"){const list=PATCHES.filter(x=>x.category==="GO:Piano");return list.findIndex(x=>x.name===p.name)>=0&&list.findIndex(x=>x.name===p.name)<9;}return false;}
 function resonanceAvailable(p){return !!p&&(p.category==="Acoustic Piano"||(p.category==="GO:Piano"&&defaultResonance(p)));}
 let resonancePreference=true;
-function updateResonanceAvailability(){const available=resonanceAvailable(selectedPatch(1));$("resonanceControl").classList.toggle("muted",!available);$("pianoResonance").disabled=!available;if(available){$("pianoResonance").checked=resonancePreference;}else{$("pianoResonance").checked=false;}$("resonanceText").textContent="Piano Damper Resonance: "+($("pianoResonance").checked?"ON":"OFF");return available;}
+function updateResonanceAvailability(){const available=resonanceAvailable(selectedPatch(1));$("resonanceControl").classList.toggle("muted",!available);$("pianoResonance").disabled=!available;if(available){$("pianoResonance").checked=resonancePreference;}else{$("pianoResonance").checked=false;}$("resonanceText").textContent="Sustain Pedal Resonance: "+($("pianoResonance").checked?"ON":"OFF");return available;}
 function resonanceMessagesForPatch(){if(!updateResonanceAvailability())return [RESONANCE_OFF];return $("pianoResonance").checked?[RESONANCE_ON,RESONANCE_ON_EXTRA]:[RESONANCE_OFF];}
 function sendResonanceForCurrentPatch(){actionMessages("resonance").forEach(scheduleRaw);}
 function modeMessages(){
@@ -323,7 +323,7 @@ function handleMidiMessage(event){
  else if(addr3===0x10&&a===0x50&&b===0x00&&d.length>=28){const oct=hex(d[12]),found=Object.entries(OCTAVE_MAP).find(([label,val])=>val===oct);if(found)$('oct1').value=found[0];window._goP1Enabled=d[13]===0x01;window._goP1RangeLower=d[24];const sf=Object.entries(SPLIT_MAP).find(([label,val])=>val===d[24]);if(sf)$('split').value=sf[0];updateOutput();}
  else if(addr3===0x10&&a===0x51&&b===0x00&&d.length>=28){const oct=hex(d[12]),found=Object.entries(OCTAVE_MAP).find(([label,val])=>val===oct);if(found)$('oct2').value=found[0];window._goP2Enabled=d[13]===0x01;const splitCandidate=Object.entries(SPLIT_MAP).find(([label,val])=>val-1===d[25]);if(splitCandidate)$('split').value=splitCandidate[0];if(window._goP1Enabled&&window._goP2Enabled){const p1Lower=Number(window._goP1RangeLower);const p2Upper=Number(d[25]);if(p1Lower===0x7F&&p2Upper===0x7F){activePart=2;document.querySelector('input[name="mode"][value="Single Tone"]').checked=true;}else{const isSplit=p1Lower>0&&p1Lower<0x7F&&p2Upper===p1Lower-1;document.querySelector('input[name="mode"][value="'+(isSplit?"Split":"Layer")+'"]').checked=true;}}else{activePart=1;document.querySelector('input[name="mode"][value="Single Tone"]').checked=true;}updateOutput();}
  else if(addr3===0x10&&a===0x0A&&b===0x00&&d.length>=14){window._goPianoMfxType=d[12];}
- else if(addr3===0x01&&a===0x00&&b===0x0C&&d.length>=14){const on=d[12]===0x01&&window._goPianoMfxType===0x4E;if(resonanceAvailable(selectedPatch(1))){resonancePreference=on;$('pianoResonance').checked=on;$('resonanceText').textContent='Piano Damper Resonance: '+(on?'ON':'OFF');}}
+ else if(addr3===0x01&&a===0x00&&b===0x0C&&d.length>=14){const on=d[12]===0x01&&window._goPianoMfxType===0x4E;if(resonanceAvailable(selectedPatch(1))){resonancePreference=on;$('pianoResonance').checked=on;$('resonanceText').textContent='Sustain Pedal Resonance: '+(on?'ON':'OFF');}}
  if(readingPerformanceState&&addr3===0x01&&a===0x00&&b===0x0C){readingPerformanceState=false;homeReadInProgress=false;$('midiNotice').textContent='Performance state read from GO:Piano.';}
 }
 
