@@ -250,11 +250,11 @@ $("selectPart1").addEventListener("click",()=>selectActivePart(1));$("selectPart
 [ ["part1Card",1], ["part2Card",2] ].forEach(([id,part])=>$(id).addEventListener("click",e=>{if(mode()!=="Single Tone")return;if(e.target.closest("select, input, button, label, a"))return;selectActivePart(part);}));
 document.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener("change",()=>{updateOutput();actionMessages("mode").forEach(scheduleRaw);syncModWheel();}));
 let midiAccess=null,currentMidiInput=null,initAlreadySent=false,identityPending=false,identityAccepted=false,identityTimer=null,pressKeyListening=false;
-function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"}`;}
+function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
 function allInputs(){const arr=[];if(midiAccess&&midiAccess.inputs&&typeof midiAccess.inputs.forEach==="function")midiAccess.inputs.forEach(i=>arr.push(i));return arr;}
 function selectMidiInput(){const inputs=allInputs(),out=chosenMidiOutput();if(currentMidiInput)currentMidiInput.onmidimessage=null;currentMidiInput=null;if(!inputs.length)return;let chosen=null;if(out){chosen=inputs.find(i=>(i.name||"").toLowerCase()===(out.name||"").toLowerCase());if(!chosen&&/bluetooth/i.test(out.name||""))chosen=inputs.find(i=>/bluetooth/i.test(i.name||""));}if(!chosen)chosen=inputs.find(i=>/bluetooth/i.test(i.name||""))||inputs[0];currentMidiInput=chosen;currentMidiInput.onmidimessage=handleMidiMessage;}
 function refreshMidiOutputs(){if(!midiAccess)return;const sel=$("midiOutput"),prev=sel.value,oldOut=prev?midiAccess.outputs.get(prev):null,prevName=oldOut&&oldOut.name||"";const outputs=[];if(midiAccess.outputs&&typeof midiAccess.outputs.forEach==="function")midiAccess.outputs.forEach(out=>outputs.push(out));sel.innerHTML="";if(!outputs.length){const o=document.createElement("option");o.value="";o.textContent="No MIDI outputs found";sel.appendChild(o);$("midiStatus").textContent="No MIDI outputs found";diag();return;}outputs.forEach(out=>{const o=document.createElement("option");o.value=out.id;o.textContent=out.name||("MIDI · "+out.id);sel.appendChild(o);});if(outputs.some(o=>o.id===prev)&&!(/session\s*1/i.test(prevName)&&outputs.some(o=>/bluetooth/i.test(o.name||""))))sel.value=prev;else{const likely=outputs.find(o=>/bluetooth/i.test(o.name||""))||outputs.find(o=>/go.?piano|roland|midi/i.test(o.name||""))||outputs[0];sel.value=likely.id;}updateMidiUi();selectMidiInput();diag();}
-function chosenMidiOutput(){return midiAccess&&midiAccess.outputs?midiAccess.outputs.get($("midiOutput").value)||null:null;}
+function chosenMidiOutput(){if($("midiOutput").value==="ble-midi")return bleCharacteristic?bleMidiOutput:null;return midiAccess&&midiAccess.outputs?midiAccess.outputs.get($("midiOutput").value)||null:null;}
 function updateMidiUi(){const out=chosenMidiOutput();$("midiStatus").textContent=out?(out.name||"MIDI connected"):(midiAccess?"MIDI connected":"Not connected");diag();}
 function sendRawNow(str){const out=chosenMidiOutput();if(!out)return false;try{sendLogged(out, checkedOutgoing(str));return true;}catch(err){$("midiNotice").textContent=`MIDI error: ${err.name||"Error"}: ${err.message||String(err)}`;return false;}}
 function rq(address,count){return parseHex("F0 41 10 00 00 00 3D 11 "+address.map(hex).join(" ")+" 00 00 "+hex(count)+" 00 F7");}
@@ -553,9 +553,87 @@ $("presetSelect").addEventListener("change",()=>{
 });
 $("savePresetBtn").addEventListener("click",openSaveDialog);
 
-function requestIdentity(){const out=chosenMidiOutput();if(!out)return;identityAccepted=false;identityPending=true;selectMidiInput();if(!currentMidiInput){identityPending=false;$("midiNotice").textContent="No MIDI input found. Device identity cannot be checked.";return;}try{sendLogged(out,parseHex("F0 7E 7F 06 01 F7"));$("midiNotice").textContent="Checking device identity…";clearTimeout(identityTimer);identityTimer=setTimeout(()=>{if(identityPending){identityPending=false;$("midiNotice").textContent="No valid Identity Reply received. Check the MIDI connection and try again.";}},1800);}catch(err){identityPending=false;$("midiNotice").textContent=`Identity Request error: ${err.message||String(err)}`;}}
+function requestIdentity(){const out=chosenMidiOutput();if(!out)return;identityAccepted=false;identityPending=true;if($("midiOutput").value!=="ble-midi"){selectMidiInput();if(!currentMidiInput){identityPending=false;$("midiNotice").textContent="No MIDI input found. Device identity cannot be checked.";return;}}try{sendLogged(out,parseHex("F0 7E 7F 06 01 F7"));$("midiNotice").textContent="Checking device identity…";clearTimeout(identityTimer);identityTimer=setTimeout(()=>{if(identityPending){identityPending=false;$("midiNotice").textContent="No valid Identity Reply received. Check the MIDI connection and try again.";}},1800);}catch(err){identityPending=false;$("midiNotice").textContent=`Identity Request error: ${err.message||String(err)}`;}}
 function initializeDevice(){const out=chosenMidiOutput();if(!out)return;performanceControlChannelRequested=false;setCat("cat2","GO:Piano");fillPatchSelect(2,"AcousticBass");$("vol2").value="100";$("vol2Slider").value="100";updateOutput();updateResonanceAvailability();try{sendLogged(out, checkedOutgoing(EFFECT_STRUCTURE));sendLogged(out, checkedOutgoing(PART2_INIT_PATCH));resonanceMessagesForPatch().forEach(s=>sendLogged(out, checkedOutgoing(s)));READ_REQUESTS.forEach(s=>sendLogged(out, parseHex(s)));requestPerformanceControlChannel();requestPresetNames();initAlreadySent=true;$("midiNotice").textContent=currentMidiInput?"Connected. Initialization sent; reading device state…":"Connected. Initialization sent, but no MIDI input was found; reading may be unavailable.";}catch(err){$("midiNotice").textContent=`Init error: ${err.name||"Error"}: ${err.message||String(err)}`;}}
-$("connectBtn").addEventListener("click",async()=>{diag();if(!navigator.requestMIDIAccess){$("midiNotice").textContent="Web MIDI API is unavailable in this browser. On iOS, support depends on the browser.";return;}$("connectBtn").disabled=true;$("connectBtn").textContent="…";try{midiAccess=await navigator.requestMIDIAccess({sysex:true});midiAccess.onstatechange=()=>{refreshMidiOutputs();};refreshMidiOutputs();selectMidiInput();if(chosenMidiOutput())requestIdentity();$("midiNotice").textContent="Checking device identity…";}catch(err){$("midiNotice").textContent=`MIDI error: ${err.name||"Error"}: ${err.message||String(err)}`;$("diagnostic").textContent=`${window.isSecureContext?"secure":"NOT secure"} · ${err.name||"Error"}`;}finally{$("connectBtn").disabled=false;$("connectBtn").textContent="Connect";}});
+
+// Experimental Web Bluetooth BLE-MIDI transport, used when Web MIDI exposes no ports.
+const BLE_MIDI_SERVICE="03B80E5A-EDE8-4B33-A751-6CE34EC4C700";
+const BLE_MIDI_CHARACTERISTIC="7772E5DB-3868-4112-A1A9-F2669D106BF3";
+let bleDevice=null,bleServer=null,bleCharacteristic=null,bleWriteQueue=Promise.resolve(),bleSysExBuffer=null;
+function bleTimestamp(){return (Date.now()&0x1FFF);}
+function blePacketize(data){
+ const bytes=Array.from(data||[]), packets=[];
+ // Each BLE-MIDI packet begins with a header and timestamp. Keep writes at <=20 bytes
+ // for compatibility with BLE peripherals that use the default ATT MTU.
+ const stamp=bleTimestamp(), prefix=[0x80|((stamp>>7)&0x3F),0x80|(stamp&0x7F)];
+ if(bytes.length<=18)return [[...prefix,...bytes]];
+ // SysEx is the large-message case used by this app. Each continuation packet has
+ // its own timestamp header; the SysEx stream itself remains byte-for-byte intact.
+ for(let i=0;i<bytes.length;i+=18)packets.push([...prefix,...bytes.slice(i,i+18)]);
+ return packets;
+}
+function bleSend(data){
+ if(!bleCharacteristic)throw new Error("Bluetooth MIDI is not connected");
+ const packets=blePacketize(data);
+ packets.forEach(packet=>{
+  const payload=new Uint8Array(packet);
+  bleWriteQueue=bleWriteQueue.then(async()=>{
+   if(!bleCharacteristic)throw new Error("Bluetooth MIDI disconnected");
+   if(typeof bleCharacteristic.writeValueWithoutResponse==="function")await bleCharacteristic.writeValueWithoutResponse(payload);
+   else await bleCharacteristic.writeValue(payload);
+  }).catch(err=>{$("midiNotice").textContent=`Bluetooth MIDI send error: ${err.message||String(err)}`;});
+ });
+}
+const bleMidiOutput={id:"ble-midi",name:"GO:Piano MIDI (Bluetooth)",send(data){bleSend(data);}};
+function bleHandleNotification(event){
+ const packet=Array.from(event.target.value||[]);if(packet.length<2)return;
+ // Strip the packet header and its timestamp. SysEx replies may span multiple BLE packets.
+ const body=packet.slice(2);if(!body.length)return;
+ let i=0;
+ if(body[0]===0xF0){bleSysExBuffer=[0xF0];i=1;}
+ if(bleSysExBuffer){
+  for(;i<body.length;i++){
+   const b=body[i];
+   // A timestamp inserted inside a continued SysEx packet is not SysEx data.
+   if(b===0xF7){bleSysExBuffer.push(b);handleMidiMessage({data:new Uint8Array(bleSysExBuffer)});bleSysExBuffer=null;}
+   else if(b>=0x80&&b!==0xF0){ /* timestamp/status ambiguity: ignore timestamp-like bytes in SysEx */ }
+   else bleSysExBuffer.push(b);
+  }
+  return;
+ }
+ // Most non-SysEx messages occupy one packet. The first MIDI status follows the timestamp.
+ const statusIndex=body.findIndex(b=>b>=0x80);
+ if(statusIndex<0)return;
+ const msg=body.slice(statusIndex);
+ if(msg.length>=2)handleMidiMessage({data:new Uint8Array(msg)});
+}
+async function connectBleMidi(){
+ if(!navigator.bluetooth||!navigator.bluetooth.requestDevice)throw new Error("Web Bluetooth is unavailable in this browser");
+ const device=await navigator.bluetooth.requestDevice({filters:[{services:[BLE_MIDI_SERVICE]}],optionalServices:[BLE_MIDI_SERVICE]});
+ bleDevice=device;device.addEventListener("gattserverdisconnected",()=>{
+  bleCharacteristic=null;bleServer=null;bleSysExBuffer=null;
+  const sel=$("midiOutput");if(sel.value==="ble-midi"){sel.innerHTML="";const o=document.createElement("option");o.value="";o.textContent="Bluetooth MIDI disconnected";sel.appendChild(o);}
+  $("midiStatus").textContent="Bluetooth MIDI disconnected";$("midiNotice").textContent="Bluetooth MIDI disconnected. Press Connect to reconnect.";
+ });
+ bleServer=await device.gatt.connect();
+ const service=await bleServer.getPrimaryService(BLE_MIDI_SERVICE);
+ bleCharacteristic=await service.getCharacteristic(BLE_MIDI_CHARACTERISTIC);
+ await bleCharacteristic.startNotifications();
+ bleCharacteristic.addEventListener("characteristicvaluechanged",bleHandleNotification);
+ const sel=$("midiOutput");sel.innerHTML="";const option=document.createElement("option");option.value="ble-midi";option.textContent=device.name||"GO:Piano MIDI (Bluetooth)";sel.appendChild(option);sel.value="ble-midi";
+ currentMidiInput=null;updateMidiUi();
+ $("midiNotice").textContent="Bluetooth MIDI connected. Checking device identity…";
+ requestIdentity();
+}
+$("connectBtn").addEventListener("click",async()=>{diag();$("connectBtn").disabled=true;$("connectBtn").textContent="…";try{
+ let webMidiError=null;
+ if(navigator.requestMIDIAccess){
+  try{midiAccess=await navigator.requestMIDIAccess({sysex:true});midiAccess.onstatechange=()=>{refreshMidiOutputs();};refreshMidiOutputs();selectMidiInput();if(chosenMidiOutput()){requestIdentity();$("midiNotice").textContent="Checking device identity…";return;}}
+  catch(err){webMidiError=err;}
+ }
+ // If the browser has no Web MIDI ports, try direct BLE-MIDI on Android/Chrome.
+ await connectBleMidi();
+ }catch(err){const detail=err&&err.message||String(err);$("midiNotice").textContent=(webMidiError?`Web MIDI: ${webMidiError.message||webMidiError.name}. `:"")+`Bluetooth MIDI: ${detail}`;$("diagnostic").textContent=`${window.isSecureContext?"secure":"NOT secure"} · ${err.name||"Error"}`;}finally{$("connectBtn").disabled=false;$("connectBtn").textContent="Connect";}});
 $("midiOutput").addEventListener("change",()=>{updateMidiUi();selectMidiInput();if(chosenMidiOutput())requestIdentity();});
 resonancePreference=defaultResonance(selectedPatch(1));updateResonanceAvailability();updatePresetOptions();updatePresetAvailability();diag();updateOutput();syncModWheel();
 </script>
