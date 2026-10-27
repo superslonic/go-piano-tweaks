@@ -43,14 +43,116 @@
 .preset-wheel-row .modwheel{position:relative;display:block;flex:1 1 auto;width:29px;max-width:100%;min-width:0;min-height:0;height:auto;margin:0;padding:0;border:2px solid #586371;border-radius:9px;background:#080d14;cursor:ns-resize;touch-action:none;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 .preset-wheel-row .modwheel-fill{position:absolute;inset:auto 0 0 0;width:100%;height:0%;border-radius:0 0 6px 6px;background:linear-gradient(180deg,#56a2fa,#286ec9);pointer-events:none}
 .preset-wheel-row .modwheel::after{content:"";position:absolute;left:3px;right:3px;top:50%;height:2px;border-radius:2px;background:rgba(255,255,255,.12);pointer-events:none}
-@media(max-width:480px){
- .preset-wheel-row .compacttop{grid-template-columns:minmax(0,1fr);gap:9px}
- .preset-wheel-row .modwheel-wrap{height:186px}
-}
+
 @media(max-width:360px){
  .preset-wheel-row{grid-template-columns:43px minmax(0,1fr);gap:6px}
  .preset-wheel-row .modwheel-wrap{padding-left:5px;padding-right:5px}
  .preset-wheel-row .modwheel{width:27px}
+}
+
+/* v72: keep the wheel rail at exactly the same height as the Preset card. */
+.preset-wheel-row{
+  align-items:stretch;
+  margin-bottom:8px;
+}
+.preset-wheel-row>.preset-card{
+  margin-bottom:0;
+}
+.preset-wheel-row .modwheel-wrap{
+  height:auto;
+  align-self:stretch;
+}
+
+/* Keep Split Point and Reverb Level side by side at all screen widths. */
+.preset-wheel-row .compacttop{
+  grid-template-columns:minmax(0,1.26fr) minmax(0,1fr);
+  column-gap:8px;
+}
+
+/* Narrow displays: scale buttons, lists, steppers, spacing and labels as one system. */
+@media (max-width:480px){
+  :root{
+    --compact-control-height:clamp(31px, 8.9vw, 36px);
+    --compact-step-width:clamp(28px, 8vw, 34px);
+    --compact-gap:clamp(4px, 1.3vw, 6px);
+  }
+  .preset-wheel-row .compacttop{
+    grid-template-columns:minmax(0,1.26fr) minmax(0,1fr);
+    gap:var(--compact-gap);
+  }
+  .preset-wheel-row .presskey-row{gap:4px}
+  .preset-wheel-row .reverbbox{gap:3px}
+  .preset-wheel-row .reverbbox .stepbtn{
+    flex:0 0 var(--compact-step-width);
+    width:var(--compact-step-width);
+    min-width:var(--compact-step-width);
+    height:var(--compact-control-height);
+    font-size:clamp(16px,4.2vw,18px);
+  }
+  .preset-wheel-row .presskey-btn{
+    height:var(--compact-control-height);
+    min-height:var(--compact-control-height);
+    font-size:clamp(10px,2.8vw,12px);
+    padding:0 clamp(4px,1.3vw,7px);
+    border-radius:7px;
+  }
+  .midirow select,.preset-row select,.presskey-row select,
+  .patchfield select,.slidernum{
+    height:var(--compact-control-height);
+    min-height:var(--compact-control-height);
+    padding-top:3px;
+    padding-bottom:3px;
+  }
+  .midirow .btn,.preset-row .btn{
+    height:var(--compact-control-height);
+    min-height:var(--compact-control-height);
+    padding:0 clamp(6px,2vw,10px);
+    font-size:clamp(11px,3vw,12px);
+  }
+  #savePresetBtn{
+    height:var(--compact-control-height);
+    min-height:var(--compact-control-height);
+    min-width:clamp(65px,19vw,88px);
+    padding:0 clamp(6px,2vw,12px);
+    font-size:clamp(12px,3.6vw,15px);
+  }
+  .mode span{
+    display:flex;
+    min-height:var(--compact-control-height);
+    height:var(--compact-control-height);
+    align-items:center;
+    justify-content:center;
+    padding:0 2px;
+    font-size:clamp(10px,2.85vw,12px);
+    white-space:nowrap;
+  }
+  .part-select{
+    padding:clamp(6px,2vw,9px) clamp(6px,2.5vw,10px);
+    font-size:clamp(12px,3.4vw,14px);
+  }
+  .part-tab-label{font-size:clamp(10px,2.8vw,11px)}
+  .octcontrol .stepbtn{
+    flex-basis:var(--compact-step-width);
+    min-width:var(--compact-step-width);
+    width:var(--compact-step-width);
+    height:var(--compact-control-height);
+    font-size:clamp(16px,4.2vw,18px);
+  }
+  .sliderwrap{gap:var(--compact-gap)}
+  .slidernum{
+    width:clamp(42px,11.8vw,54px)!important;
+    height:var(--compact-control-height);
+    min-height:var(--compact-control-height)!important;
+    padding:2px 1px!important;
+  }
+  .patchfield{gap:var(--compact-gap)}
+  /* Input/select fonts stay at 16px on iOS to prevent focus-triggered zoom. */
+}
+@media (max-width:360px){
+  .preset-wheel-row .compacttop{grid-template-columns:minmax(0,1.28fr) minmax(0,1fr)}
+  .midirow{gap:5px}
+  .preset-row{gap:6px}
+  .preset-wheel-row .reverbbox{gap:2px}
 }
 </style>
 </head>
