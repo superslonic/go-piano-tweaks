@@ -250,7 +250,7 @@ $("selectPart1").addEventListener("click",()=>selectActivePart(1));$("selectPart
 [ ["part1Card",1], ["part2Card",2] ].forEach(([id,part])=>$(id).addEventListener("click",e=>{if(mode()!=="Single Tone")return;if(e.target.closest("select, input, button, label, a"))return;selectActivePart(part);}));
 document.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener("change",()=>{updateOutput();actionMessages("mode").forEach(scheduleRaw);syncModWheel();}));
 let midiAccess=null,currentMidiInput=null,initAlreadySent=false,identityPending=false,identityAccepted=false,identityTimer=null,pressKeyListening=false;
-function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v63 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
+function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v64 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
 function allInputs(){const arr=[];if(midiAccess&&midiAccess.inputs&&typeof midiAccess.inputs.forEach==="function")midiAccess.inputs.forEach(i=>arr.push(i));return arr;}
 function selectMidiInput(){const inputs=allInputs(),out=chosenMidiOutput();if(currentMidiInput)currentMidiInput.onmidimessage=null;currentMidiInput=null;if(!inputs.length)return;let chosen=null;if(out){chosen=inputs.find(i=>(i.name||"").toLowerCase()===(out.name||"").toLowerCase());if(!chosen&&/bluetooth/i.test(out.name||""))chosen=inputs.find(i=>/bluetooth/i.test(i.name||""));}if(!chosen)chosen=inputs.find(i=>/bluetooth/i.test(i.name||""))||inputs[0];currentMidiInput=chosen;currentMidiInput.onmidimessage=handleMidiMessage;}
 function refreshMidiOutputs(){if(!midiAccess)return;const sel=$("midiOutput"),prev=sel.value,oldOut=prev?midiAccess.outputs.get(prev):null,prevName=oldOut&&oldOut.name||"";const outputs=[];if(midiAccess.outputs&&typeof midiAccess.outputs.forEach==="function")midiAccess.outputs.forEach(out=>outputs.push(out));sel.innerHTML="";if(!outputs.length){const o=document.createElement("option");o.value="";o.textContent="No MIDI outputs found";sel.appendChild(o);$("midiStatus").textContent="No MIDI outputs found";diag();return;}outputs.forEach(out=>{const o=document.createElement("option");o.value=out.id;o.textContent=out.name||("MIDI · "+out.id);sel.appendChild(o);});if(outputs.some(o=>o.id===prev)&&!(/session\s*1/i.test(prevName)&&outputs.some(o=>/bluetooth/i.test(o.name||""))))sel.value=prev;else{const likely=outputs.find(o=>/bluetooth/i.test(o.name||""))||outputs.find(o=>/go.?piano|roland|midi/i.test(o.name||""))||outputs[0];sel.value=likely.id;}updateMidiUi();selectMidiInput();diag();}
@@ -553,7 +553,7 @@ $("presetSelect").addEventListener("change",()=>{
 });
 $("savePresetBtn").addEventListener("click",openSaveDialog);
 
-function requestIdentity(){identityAccepted=false;identityPending=false;clearTimeout(identityTimer);$("midiNotice").textContent="Diagnostic mode: connected without sending MIDI commands. Do not use app controls during this test.";}
+function requestIdentity(){identityAccepted=false;identityPending=false;clearTimeout(identityTimer);$("midiNotice").textContent="Connected. No automatic SysEx sent. Test one simple control first.";}
 function initializeDevice(){const out=chosenMidiOutput();if(!out)return;performanceControlChannelRequested=false;setCat("cat2","GO:Piano");fillPatchSelect(2,"AcousticBass");$("vol2").value="100";$("vol2Slider").value="100";updateOutput();updateResonanceAvailability();try{sendLogged(out, checkedOutgoing(EFFECT_STRUCTURE));sendLogged(out, checkedOutgoing(PART2_INIT_PATCH));resonanceMessagesForPatch().forEach(s=>sendLogged(out, checkedOutgoing(s)));READ_REQUESTS.forEach(s=>sendLogged(out, parseHex(s)));requestPerformanceControlChannel();requestPresetNames();initAlreadySent=true;$("midiNotice").textContent=currentMidiInput?"Connected. Initialization sent; reading device state…":"Connected. Initialization sent, but no MIDI input was found; reading may be unavailable.";}catch(err){$("midiNotice").textContent=`Init error: ${err.name||"Error"}: ${err.message||String(err)}`;}}
 
 // Experimental Web Bluetooth BLE-MIDI transport, used when Web MIDI exposes no ports.
@@ -561,51 +561,102 @@ const BLE_MIDI_SERVICE="03b80e5a-ede8-4b33-a751-6ce34ec4c700";
 const BLE_MIDI_CHARACTERISTIC="7772e5db-3868-4112-a1a9-f2669d106bf3";
 let bleDevice=null,bleServer=null,bleCharacteristic=null,bleWriteQueue=Promise.resolve(),bleSysExBuffer=null;
 function bleTimestamp(){return (Date.now()&0x1FFF);}
+// BLE-MIDI 1.0 framing follows the format used by Android's BluetoothPacketEncoder.
+// A SysEx START must have a timestamp, continuation bytes must NOT have one,
+// and the final F7 MUST be preceded by its own timestamp byte.
 function blePacketize(data){
- const bytes=Array.from(data||[]), packets=[];
- // Each BLE-MIDI packet begins with a header and timestamp. Keep writes at <=20 bytes
- // for compatibility with BLE peripherals that use the default ATT MTU.
- const stamp=bleTimestamp(), prefix=[0x80|((stamp>>7)&0x3F),0x80|(stamp&0x7F)];
- if(bytes.length<=18)return [[...prefix,...bytes]];
- // SysEx is the large-message case used by this app. Each continuation packet has
- // its own timestamp header; the SysEx stream itself remains byte-for-byte intact.
- for(let i=0;i<bytes.length;i+=18)packets.push([...prefix,...bytes.slice(i,i+18)]);
+ const bytes=Array.from(data||[]),packets=[];
+ if(!bytes.length)return packets;
+ if(bytes.some(b=>!Number.isInteger(b)||b<0||b>255))throw new Error("Invalid MIDI byte");
+ const stamp=bleTimestamp(),header=0x80|((stamp>>7)&0x3F),time=0x80|(stamp&0x7F);
+ const maxSize=20; // Minimum ATT MTU = 23, leaving 20 data bytes.
+ if(bytes[0]!==0xF0){
+  if(bytes.length+2>maxSize)throw new Error("Unsupported long non-SysEx MIDI message");
+  return [[header,time,...bytes]];
+ }
+ if(bytes[bytes.length-1]!==0xF7)throw new Error("Incomplete SysEx: missing F7");
+ if(bytes.slice(1,-1).some(b=>b>0x7F))throw new Error("Invalid data byte inside SysEx");
+ // Frame the bytes from F0 through the last data byte, excluding the final F7.
+ const content=bytes.slice(0,-1);
+ let index=0,first=true;
+ while(index<content.length){
+  const prefix=first?[header,time]:[header];
+  const remaining=content.length-index,available=maxSize-prefix.length;
+  if(remaining+2<=available){
+   // The finishing timestamp and F7 fit in this same packet.
+   packets.push([...prefix,...content.slice(index),time,0xF7]);
+   return packets;
+  }
+  // No timestamp before subsequent SysEx data. Only the BLE header is present.
+  const count=Math.min(available,remaining);
+  packets.push([...prefix,...content.slice(index,index+count)]);
+  index+=count;first=false;
+ }
+ // An end-only packet is valid and includes the required timestamp before F7.
+ packets.push([header,time,0xF7]);
  return packets;
 }
 function bleSend(data){
  if(!bleCharacteristic)throw new Error("Bluetooth MIDI is not connected");
- const packets=blePacketize(data);
- packets.forEach(packet=>{
+ const packets=blePacketize(data),connection=bleCharacteristic;
+ packets.forEach((packet,index)=>{
   const payload=new Uint8Array(packet);
   bleWriteQueue=bleWriteQueue.then(async()=>{
-   if(!bleCharacteristic)throw new Error("Bluetooth MIDI disconnected");
-   if(typeof bleCharacteristic.writeValueWithoutResponse==="function")await bleCharacteristic.writeValueWithoutResponse(payload);
-   else await bleCharacteristic.writeValue(payload);
+   if(bleCharacteristic!==connection)throw new Error("Bluetooth MIDI disconnected");
+   if(typeof connection.writeValueWithoutResponse==="function")await connection.writeValueWithoutResponse(payload);
+   else await connection.writeValue(payload);
+   // Small spacing is needed only for fragments of one large BLE SysEx,
+   // not for ordinary MIDI or separate short SysEx commands.
+   if(packets.length>1&&index<packets.length-1)
+    await new Promise(resolve=>setTimeout(resolve,12));
   }).catch(err=>{$("midiNotice").textContent=`Bluetooth MIDI send error: ${err.message||String(err)}`;});
  });
 }
 const bleMidiOutput={id:"ble-midi",name:"GO:Piano MIDI (Bluetooth)",send(data){bleSend(data);}};
 function bleHandleNotification(event){
- const packet=Array.from(event.target.value||[]);if(packet.length<2)return;
- // Strip the packet header and its timestamp. SysEx replies may span multiple BLE packets.
- const body=packet.slice(2);if(!body.length)return;
- let i=0;
- if(body[0]===0xF0){bleSysExBuffer=[0xF0];i=1;}
- if(bleSysExBuffer){
-  for(;i<body.length;i++){
-   const b=body[i];
-   // A timestamp inserted inside a continued SysEx packet is not SysEx data.
-   if(b===0xF7){bleSysExBuffer.push(b);handleMidiMessage({data:new Uint8Array(bleSysExBuffer)});bleSysExBuffer=null;}
-   else if(b>=0x80&&b!==0xF0){ /* timestamp/status ambiguity: ignore timestamp-like bytes in SysEx */ }
-   else bleSysExBuffer.push(b);
+ const value=event&&event.target&&event.target.value;
+ if(!value)return;
+ // Web Bluetooth provides a DataView, which Array.from(DataView) does NOT read.
+ const packet=value.buffer?Array.from(new Uint8Array(value.buffer,value.byteOffset||0,value.byteLength)):
+  Array.from(value);
+ if(packet.length<2||(packet[0]&0xC0)!==0x80)return;
+ const emit=bytes=>handleMidiMessage({data:new Uint8Array(bytes)});
+ let i=1, runningStatus=0;
+ while(i<packet.length){
+  if(bleSysExBuffer){
+   const b=packet[i];
+   if(b<0x80){
+    bleSysExBuffer.push(b);i++;
+    if(bleSysExBuffer.length>32768){bleSysExBuffer=null;return;}
+   }else if(b===0xF7&&(i+1>=packet.length||packet[i+1]!==0xF7)){
+    bleSysExBuffer.push(0xF7);emit(bleSysExBuffer);bleSysExBuffer=null;i++;
+   }else if(b>=0xF8){
+    emit([b]);i++; // MIDI real-time may interrupt SysEx.
+   }else{
+    // Timestamp before F7 (which could itself equal F7) or a real-time event.
+    // A continued SysEx frame otherwise contains only 7-bit data.
+    i++;
+   }
+   continue;
   }
-  return;
+  // Normal BLE MIDI events start with a timestamp byte. SysEx continuation
+  // (the only packet type without this byte) was handled above.
+  if((packet[i]&0x80)===0){i++;continue;}
+  i++;if(i>=packet.length)break; // timestamp consumed
+  let status=packet[i];
+  if(status<0x80){if(!runningStatus)continue;status=runningStatus;}
+  else i++;
+  if(status===0xF0){bleSysExBuffer=[0xF0];runningStatus=0;continue;}
+  if(status>=0xF8){emit([status]);continue;}
+  if(status===0xF7){runningStatus=0;continue;}
+  const size=(status>=0x80&&status<=0xEF)?((status&0xF0)===0xC0||(status&0xF0)===0xD0?1:2):
+   (status===0xF1||status===0xF3?1:status===0xF2?2:0);
+  if(i+size>packet.length)break;
+  const args=packet.slice(i,i+size);
+  if(args.some(b=>b&0x80)){runningStatus=0;continue;}
+  i+=size;emit([status,...args]);
+  runningStatus=status>=0x80&&status<0xF0?status:0;
  }
- // Most non-SysEx messages occupy one packet. The first MIDI status follows the timestamp.
- const statusIndex=body.findIndex(b=>b>=0x80);
- if(statusIndex<0)return;
- const msg=body.slice(statusIndex);
- if(msg.length>=2)handleMidiMessage({data:new Uint8Array(msg)});
 }
 let bleConnectStage="not started";
 async function connectBleMidi(){
@@ -629,7 +680,7 @@ async function connectBleMidi(){
  bleCharacteristic.addEventListener("characteristicvaluechanged",bleHandleNotification);
  const sel=$("midiOutput");sel.innerHTML="";const option=document.createElement("option");option.value="ble-midi";option.textContent=device.name||"GO:Piano MIDI (Bluetooth)";sel.appendChild(option);sel.value="ble-midi";
  currentMidiInput=null;updateMidiUi();
- $("midiNotice").textContent="Bluetooth MIDI connected. Checking device identity…";
+ $("midiNotice").textContent="Bluetooth MIDI connected. No automatic SysEx sent; ready for manual test.";
  requestIdentity();
 }
 $("connectBtn").addEventListener("click",async()=>{diag();$("midiNotice").textContent="Connect pressed. Starting MIDI connection…";$("connectBtn").disabled=true;$("connectBtn").textContent="…";try{
@@ -643,7 +694,7 @@ $("connectBtn").addEventListener("click",async()=>{diag();$("midiNotice").textCo
   midiAccess=await navigator.requestMIDIAccess({sysex:true});
   midiAccess.onstatechange=()=>{refreshMidiOutputs();};
   refreshMidiOutputs();selectMidiInput();
-  if(chosenMidiOutput()){requestIdentity();$("midiNotice").textContent="Checking device identity…";return;}
+  if(chosenMidiOutput()){requestIdentity();$("midiNotice").textContent="Connected; no automatic SysEx sent.";return;}
   $("midiNotice").textContent="No MIDI outputs found. Web Bluetooth is unavailable in this browser.";
  }else{
   throw new Error("Neither Web MIDI nor Web Bluetooth is available in this browser");
