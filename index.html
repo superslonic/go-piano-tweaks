@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#101522">
-<title>GO:Piano Tweaks</title>
+<title>GO:PIANO Tweaks</title>
 <style>
 :root{color-scheme:dark;--bg:#10141b;--panel:#1b222c;--line:#37414f;--text:#f1f4f8;--muted:#a5afbd;--accent:#8bbcff;--green:#8ce0b6}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font:14px/1.25 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -34,20 +34,42 @@
 .reverbbox .digital-display,.octcontrol .digital-display{height:24px;gap:2px;align-items:center;justify-content:center}
 .reverbbox .digit,.octcontrol .digit{flex:0 0 11px;width:11px;height:18px}
 
+
+/* v71: compact MIDI section and a separate vertical modulation wheel beside Preset. */
+.preset-wheel-row{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px;align-items:start}
+.preset-wheel-row>.card{min-width:0;margin-bottom:8px}
+.preset-wheel-row .modwheel-wrap{height:186px;min-width:0;margin:0;padding:9px 6px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;background:#151b24;border:1px solid var(--line);border-radius:11px}
+.preset-wheel-row .modwheel-label{position:static;display:block;flex:none;width:auto;height:auto;margin:0;padding:0;transform:none;letter-spacing:.03em;font-size:10px;font-weight:650;line-height:1.2;text-align:center;color:var(--muted)}
+.preset-wheel-row .modwheel{position:relative;display:block;flex:1 1 auto;width:29px;max-width:100%;min-width:0;min-height:0;height:auto;margin:0;padding:0;border:2px solid #586371;border-radius:9px;background:#080d14;cursor:ns-resize;touch-action:none;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+.preset-wheel-row .modwheel-fill{position:absolute;inset:auto 0 0 0;width:100%;height:0%;border-radius:0 0 6px 6px;background:linear-gradient(180deg,#56a2fa,#286ec9);pointer-events:none}
+.preset-wheel-row .modwheel::after{content:"";position:absolute;left:3px;right:3px;top:50%;height:2px;border-radius:2px;background:rgba(255,255,255,.12);pointer-events:none}
+@media(max-width:480px){
+ .preset-wheel-row .compacttop{grid-template-columns:minmax(0,1fr);gap:9px}
+ .preset-wheel-row .modwheel-wrap{height:186px}
+}
+@media(max-width:360px){
+ .preset-wheel-row{grid-template-columns:43px minmax(0,1fr);gap:6px}
+ .preset-wheel-row .modwheel-wrap{padding-left:5px;padding-right:5px}
+ .preset-wheel-row .modwheel{width:27px}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-<header class="top"><div class="brand">GO:Piano Tweaks</div><div class="status" id="midiStatus">Not connected</div></header>
+<header class="top"><div class="brand">GO:PIANO Tweaks</div><div class="status hidden" id="midiStatus" aria-hidden="true">Not connected</div></header>
 <main>
 <section class="card">
 <div class="cardhead">MIDI</div>
 <div class="midirow"><div class="field"><label for="midiOutput">Device</label><select id="midiOutput"><option value="">Not connected</option></select></div><button class="btn" id="connectBtn">Connect</button></div>
-<div class="notice" id="midiNotice" role="status" aria-live="polite"></div>
-<div class="txloghead"><span>Outgoing MIDI messages</span><div class="txlogbuttons"><button class="btn" id="copyTxLogBtn" type="button">Copy</button><button class="btn" id="clearTxLogBtn" type="button">Clear</button></div></div><pre class="txlog" id="txLog" aria-live="off">No messages yet. Connect a device or change a parameter.</pre>
-<div class="diagnostic" id="diagnostic"></div><span class="hidden" id="messageCount">5 messages</span><pre class="hidden" id="output" aria-live="polite"></pre>
+<!-- Kept only as a non-visible internal error/status sink for MIDI logic. -->
+<div class="hidden" id="midiNotice" aria-hidden="true"></div>
 </section>
-<section class="card">
+<div class="preset-wheel-row">
+<div class="modwheel-wrap" aria-label="Modulation control">
+ <span class="modwheel-label">MOD</span>
+ <div class="modwheel" id="modWheel" role="slider" tabindex="0" aria-label="Mod Wheel" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="127" aria-valuenow="0"><div class="modwheel-fill" id="modWheelFill"></div></div>
+</div>
+<section class="card preset-card">
 <div class="cardhead preset-title">Preset</div>
 <div class="preset-row"><select id="presetSelect" aria-label="Preset"><option value="default">default</option></select><button type="button" class="btn" id="savePresetBtn">Save</button></div>
 <div class="field" style="margin-top:10px"><label>Mode</label><div class="modes">
@@ -57,7 +79,7 @@
 </div></div>
 <div class="compacttop"><div class="field splitfield muted" id="splitField"><label for="split">Split Point</label><div class="presskey-row"><select id="split"></select><button type="button" class="btn presskey-btn" id="pressKeyBtn">Press Key</button></div></div>
 <div class="field"><label>Reverb Level</label><div class="reverbbox"><button type="button" class="btn stepbtn" id="reverbMinus" aria-label="Decrease Reverb Level">−</button><span class="digital-display" id="reverbValue" aria-label="Reverb Level"></span><button type="button" class="btn stepbtn" id="reverbPlus" aria-label="Increase Reverb Level">+</button><input type="hidden" id="reverb" value="4"></div></div></div></section>
-<div class="modwheel-wrap" aria-label="Modulation control"><label class="modwheel-label" for="modWheel">MOD</label><div class="modwheel" id="modWheel" role="slider" tabindex="0" aria-label="Mod Wheel" aria-valuemin="0" aria-valuemax="127" aria-valuenow="0"><div class="modwheel-fill" id="modWheelFill"></div></div></div>
+</div>
 <section class="card" id="partsCard">
 <div class="part-tabs">
 <button type="button" class="part-select" id="selectPart2" aria-pressed="false">Part 2<span class="part-tab-label" id="part2TabPatch">AcousticBass</span></button>
@@ -114,19 +136,8 @@ function scheduleAutoSend(ids){ids.forEach(i=>pendingMessages.add(i));scheduleFl
 function scheduleRaw(hexString){pendingRaw.push(hexString);scheduleFlush();}
 function scheduleStateRead(){if(stateReadTimer!==null)clearTimeout(stateReadTimer);stateReadTimer=setTimeout(()=>{stateReadTimer=null;requestPerformanceState(false);},260);}
 function parseHex(str){return str.trim().split(/\s+/).map(v=>parseInt(v,16));}
-let txLogCount=0;
-function appendTxLog(data){
- const bytes=Array.from(data||[]).map(n=>Number(n)&255);
- const now=new Date(),stamp=[now.getHours(),now.getMinutes(),now.getSeconds()].map(n=>String(n).padStart(2,"0")).join(":")+"."+String(now.getMilliseconds()).padStart(3,"0");
- const line=String(++txLogCount).padStart(4,"0")+"  "+stamp+"  "+bytes.map(n=>n.toString(16).toUpperCase().padStart(2,"0")).join(" ");
- const el=$("txLog");if(!el)return;
- if(txLogCount===1)el.textContent="";
- el.textContent+=(el.textContent?"\n":"")+line;
- el.scrollTop=el.scrollHeight;
-}
-function sendLogged(out,data){out.send(data);appendTxLog(data);}
-$("clearTxLogBtn").addEventListener("click",()=>{txLogCount=0;$("txLog").textContent="Журнал очищен. Новые исходящие команды появятся здесь.";});
-$("copyTxLogBtn").addEventListener("click",()=>{const text=$("txLog").textContent; if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(()=>{$("midiNotice").textContent="Журнал исходящих команд скопирован.";}).catch(()=>{$("midiNotice").textContent="Не удалось скопировать автоматически — выдели текст журнала и скопируй вручную.";});}else{$("midiNotice").textContent="Автокопирование недоступно — выдели текст журнала и скопируй вручную.";}});
+// Production mode: send MIDI without constructing or storing a diagnostic log.
+function sendLogged(out,data){out.send(data);}
 function flushAutoSend(){const out=chosenMidiOutput();const indexes=[...pendingMessages].sort((a,b)=>a-b),raw=pendingRaw.splice(0);pendingMessages.clear();if(!out||(!indexes.length&&!raw.length))return;let sent=0;try{raw.forEach(str=>{const bytes=checkedOutgoing(str);if(bytes.some(n=>!Number.isInteger(n)||n<0||n>255))throw new Error("Invalid HEX in queued message");sendLogged(out,bytes);sent++;});$('midiNotice').textContent=`Live update · отправлено ${sent} сообщ.`;if(sent)scheduleStateRead();}catch(err){$('midiNotice').textContent=`Live send error: ${err.name||"Error"}: ${err.message||String(err)}`;}}
 function messageFullAddress(addressBytes,data){
  const dataBytes=data.map(x=>typeof x==="string"?parseInt(x,16):x);
@@ -237,17 +248,17 @@ let modWheelPosition=0;
 function sendModValue(part,value){const out=chosenMidiOutput();if(!out)return;try{sendLogged(out, [part===2?0xB1:0xB0,0x01,Math.max(0,Math.min(127,Number(value)||0))]);}catch(err){$("midiNotice").textContent=`MIDI error: ${err.name||"Error"}: ${err.message||String(err)}`;}}
 function sendModValueForCurrentMode(value){if(mode()==="Layer"){sendModValue(1,value);sendModValue(2,value);}else{sendModValue(activePart,value);}}
 function resetBothModWheels(){modWheelPosition=0;syncModWheel();sendModValue(1,0);sendModValue(2,0);}
-function syncModWheel(){const el=$("modWheel"),v=Math.max(0,Math.min(127,Number(modWheelPosition)||0));$("modWheelFill").style.width=(v/127*100)+"%";el.setAttribute("aria-valuenow",String(v));}
+function syncModWheel(){const el=$("modWheel"),v=Math.max(0,Math.min(127,Number(modWheelPosition)||0));$("modWheelFill").style.height=(v/127*100)+"%";el.setAttribute("aria-valuenow",String(v));}
 function resetModForPatch(part){sendModValue(part,0);}
 function changeOctave(part,delta){const id="oct"+part,values=["-3","-2","-1","0","+1","+2","+3"];let idx=values.indexOf($(id).value);idx=Math.max(0,Math.min(values.length-1,idx+delta));if(values[idx]===$(id).value)return;$(id).value=values[idx];updateOutput();scheduleRaw("F0 41 10 00 00 00 3D 12 10 00 "+(part===1?"50 00 ":"51 00 ")+OCTAVE_MAP[$(id).value]+" 00 F7");}
 [1,2].forEach(part=>{ $("oct"+part+"Minus").addEventListener("click",()=>changeOctave(part,-1)); $("oct"+part+"Plus").addEventListener("click",()=>changeOctave(part,1)); });
-function setModWheelFromPointer(e){const el=$("modWheel"),r=el.getBoundingClientRect();if(!r.width)return;const ratio=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));const value=Math.round(ratio*127);if(value===modWheelPosition){syncModWheel();return;}modWheelPosition=value;syncModWheel();sendModValueForCurrentMode(value);}
+function setModWheelFromPointer(e){const el=$("modWheel"),r=el.getBoundingClientRect();if(!r.height)return;const ratio=Math.max(0,Math.min(1,(r.bottom-e.clientY)/r.height));const value=Math.round(ratio*127);if(value===modWheelPosition){syncModWheel();return;}modWheelPosition=value;syncModWheel();sendModValueForCurrentMode(value);}
 let modWheelPointerActive=false;
 $("modWheel").addEventListener("pointerdown",e=>{if(e.pointerType==="mouse"&&e.button!==0)return;modWheelPointerActive=true;try{$("modWheel").setPointerCapture(e.pointerId);}catch(_){}setModWheelFromPointer(e);e.preventDefault();});
 $("modWheel").addEventListener("pointermove",e=>{if(modWheelPointerActive)setModWheelFromPointer(e);});
 ["pointerup","pointercancel","lostpointercapture"].forEach(type=>$("modWheel").addEventListener(type,()=>{modWheelPointerActive=false;}));
 $("modWheel").addEventListener("keydown",e=>{let v=modWheelPosition;if(e.key==="ArrowRight"||e.key==="ArrowUp")v=Math.min(127,v+1);else if(e.key==="ArrowLeft"||e.key==="ArrowDown")v=Math.max(0,v-1);else if(e.key==="Home")v=0;else if(e.key==="End")v=127;else return;e.preventDefault();if(v!==modWheelPosition){modWheelPosition=v;syncModWheel();sendModValue(modTargetPart(),v);}});
-function updateOutput(){const m=mode(),splitInactive=m!=="Split";$("splitField").classList.toggle("muted",splitInactive);$("split").disabled=splitInactive;$("part1Card").classList.toggle("part-panel-hidden",activePart!==1);$("part2Card").classList.toggle("part-panel-hidden",activePart!==2);$("selectPart1").classList.toggle("active-part",activePart===1);$("selectPart2").classList.toggle("active-part",activePart===2);$("selectPart1").setAttribute("aria-pressed",String(activePart===1));$("selectPart2").setAttribute("aria-pressed",String(activePart===2));$("part1TabPatch").textContent=$("patch1").value||"";$("part2TabPatch").textContent=$("patch2").value||"";[1,2].forEach(part=>{const list=PATCHES.filter(p=>p.category===$("cat"+part).value),idx=list.findIndex(p=>p.name===$("patch"+part).value);$("prevPatch"+part).disabled=idx<=0;$("nextPatch"+part).disabled=idx<0||idx>=list.length-1;});const r=generate();$("output").textContent=r.text;$("messageCount").textContent=r.count+" messages";renderDisplays();for(const id of ["vol1","vol2"]){const n=$(id),v=Math.max(Number(n.min),Math.min(Number(n.max),Number(n.value)||0));n.value=v;$(id+"Slider").value=v;}}
+function updateOutput(){const m=mode(),splitInactive=m!=="Split";$("splitField").classList.toggle("muted",splitInactive);$("split").disabled=splitInactive;$("part1Card").classList.toggle("part-panel-hidden",activePart!==1);$("part2Card").classList.toggle("part-panel-hidden",activePart!==2);$("selectPart1").classList.toggle("active-part",activePart===1);$("selectPart2").classList.toggle("active-part",activePart===2);$("selectPart1").setAttribute("aria-pressed",String(activePart===1));$("selectPart2").setAttribute("aria-pressed",String(activePart===2));$("part1TabPatch").textContent=$("patch1").value||"";$("part2TabPatch").textContent=$("patch2").value||"";[1,2].forEach(part=>{const list=PATCHES.filter(p=>p.category===$("cat"+part).value),idx=list.findIndex(p=>p.name===$("patch"+part).value);$("prevPatch"+part).disabled=idx<=0;$("nextPatch"+part).disabled=idx<0||idx>=list.length-1;});renderDisplays();for(const id of ["vol1","vol2"]){const n=$(id),v=Math.max(Number(n.min),Math.min(Number(n.max),Number(n.value)||0));n.value=v;$(id+"Slider").value=v;}}
 function changed(id){updateOutput();actionMessages(id).forEach(scheduleRaw);}
 function choosePatch(part,delta){const cat=$("cat"+part).value,list=PATCHES.filter(p=>p.category===cat);if(!list.length)return;let i=list.findIndex(p=>p.name===$("patch"+part).value);i=Math.max(0,Math.min(list.length-1,i+delta));$("patch"+part).value=list[i].name;resetModForPatch(part);if(part===1)updateResonanceAvailability();changed("patch"+part);if(part===1)sendResonanceForCurrentPatch();}
 $("cat1").addEventListener("change",()=>{fillPatchSelect(1);resetModForPatch(1);updateResonanceAvailability();changed("cat1");sendResonanceForCurrentPatch();});
@@ -265,7 +276,7 @@ $("selectPart1").addEventListener("click",()=>selectActivePart(1));$("selectPart
 [ ["part1Card",1], ["part2Card",2] ].forEach(([id,part])=>$(id).addEventListener("click",e=>{if(mode()!=="Single Tone")return;if(e.target.closest("select, input, button, label, a"))return;selectActivePart(part);}));
 document.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener("change",()=>{updateOutput();actionMessages("mode").forEach(scheduleRaw);syncModWheel();}));
 let midiAccess=null,currentMidiInput=null,initAlreadySent=false,identityPending=false,identityAccepted=false,identityTimer=null,pressKeyListening=false;
-function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v70 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
+function diag(){}
 function allInputs(){const arr=[];if(midiAccess&&midiAccess.inputs&&typeof midiAccess.inputs.forEach==="function")midiAccess.inputs.forEach(i=>arr.push(i));return arr;}
 function selectMidiInput(){const inputs=allInputs(),out=chosenMidiOutput();if(currentMidiInput)currentMidiInput.onmidimessage=null;currentMidiInput=null;if(!inputs.length)return;let chosen=null;if(out){chosen=inputs.find(i=>(i.name||"").toLowerCase()===(out.name||"").toLowerCase());if(!chosen&&/bluetooth/i.test(out.name||""))chosen=inputs.find(i=>/bluetooth/i.test(i.name||""));}if(!chosen)chosen=inputs.find(i=>/bluetooth/i.test(i.name||""))||inputs[0];currentMidiInput=chosen;currentMidiInput.onmidimessage=handleMidiMessage;}
 function refreshMidiOutputs(){if(!midiAccess)return;const sel=$("midiOutput"),prev=sel.value,oldOut=prev?midiAccess.outputs.get(prev):null,prevName=oldOut&&oldOut.name||"";const outputs=[];if(midiAccess.outputs&&typeof midiAccess.outputs.forEach==="function")midiAccess.outputs.forEach(out=>outputs.push(out));sel.innerHTML="";if(!outputs.length){const o=document.createElement("option");o.value="";o.textContent="No MIDI outputs found";sel.appendChild(o);$("midiStatus").textContent="No MIDI outputs found";diag();return;}outputs.forEach(out=>{const o=document.createElement("option");o.value=out.id;o.textContent=out.name||("MIDI · "+out.id);sel.appendChild(o);});if(outputs.some(o=>o.id===prev)&&!(/session\s*1/i.test(prevName)&&outputs.some(o=>/bluetooth/i.test(o.name||""))))sel.value=prev;else{const likely=outputs.find(o=>/bluetooth/i.test(o.name||""))||outputs.find(o=>/go.?piano|roland|midi/i.test(o.name||""))||outputs[0];sel.value=likely.id;}updateMidiUi();selectMidiInput();diag();}
@@ -803,7 +814,7 @@ $("connectBtn").addEventListener("click",async()=>{diag();$("midiNotice").textCo
  }else{
   throw new Error("Neither Web MIDI nor Web Bluetooth is available in this browser");
  }
- }catch(err){const detail=err&&err.message||String(err);const name=err&&err.name||"Error";$("midiNotice").textContent=`Connection error (${name}): ${detail}`;$("diagnostic").textContent=`${window.isSecureContext?"secure":"NOT secure"} · ${name}: ${detail} · stage: ${bleConnectStage}`;}finally{$("connectBtn").disabled=false;$("connectBtn").textContent="Connect";}});
+ }catch(err){const detail=err&&err.message||String(err);const name=err&&err.name||"Error";$("midiNotice").textContent=`Connection error (${name}): ${detail}`;/* Diagnostic details are no longer shown in the production UI. */}finally{$("connectBtn").disabled=false;$("connectBtn").textContent="Connect";}});
 $("midiOutput").addEventListener("change",()=>{updateMidiUi();selectMidiInput();if(chosenMidiOutput())requestIdentity();});
 resonancePreference=defaultResonance(selectedPatch(1));updateResonanceAvailability();updatePresetOptions();updatePresetAvailability();diag();updateOutput();syncModWheel();
 </script>
