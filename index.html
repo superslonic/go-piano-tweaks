@@ -44,6 +44,7 @@
 <div class="cardhead">MIDI</div>
 <div class="midirow"><div class="field"><label for="midiOutput">Device</label><select id="midiOutput"><option value="">Not connected</option></select></div><button class="btn" id="connectBtn">Connect</button></div>
 <div class="notice" id="midiNotice" role="status" aria-live="polite"></div>
+<div style="margin:6px 0 3px"><button class="btn" type="button" id="legacyInitBtn" disabled title="Apply the two v54 startup settings only when requested">v54 Init</button></div>
 <div class="txloghead"><span>Outgoing MIDI messages</span><div class="txlogbuttons"><button class="btn" id="copyTxLogBtn" type="button">Copy</button><button class="btn" id="clearTxLogBtn" type="button">Clear</button></div></div><pre class="txlog" id="txLog" aria-live="off">No messages yet. Connect a device or change a parameter.</pre>
 <div class="diagnostic" id="diagnostic"></div><span class="hidden" id="messageCount">5 messages</span><pre class="hidden" id="output" aria-live="polite"></pre>
 </section>
@@ -250,12 +251,12 @@ $("selectPart1").addEventListener("click",()=>selectActivePart(1));$("selectPart
 [ ["part1Card",1], ["part2Card",2] ].forEach(([id,part])=>$(id).addEventListener("click",e=>{if(mode()!=="Single Tone")return;if(e.target.closest("select, input, button, label, a"))return;selectActivePart(part);}));
 document.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener("change",()=>{updateOutput();actionMessages("mode").forEach(scheduleRaw);syncModWheel();}));
 let midiAccess=null,currentMidiInput=null,initAlreadySent=false,identityPending=false,identityAccepted=false,identityTimer=null,pressKeyListening=false;
-function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v65 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
+function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v66 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
 function allInputs(){const arr=[];if(midiAccess&&midiAccess.inputs&&typeof midiAccess.inputs.forEach==="function")midiAccess.inputs.forEach(i=>arr.push(i));return arr;}
 function selectMidiInput(){const inputs=allInputs(),out=chosenMidiOutput();if(currentMidiInput)currentMidiInput.onmidimessage=null;currentMidiInput=null;if(!inputs.length)return;let chosen=null;if(out){chosen=inputs.find(i=>(i.name||"").toLowerCase()===(out.name||"").toLowerCase());if(!chosen&&/bluetooth/i.test(out.name||""))chosen=inputs.find(i=>/bluetooth/i.test(i.name||""));}if(!chosen)chosen=inputs.find(i=>/bluetooth/i.test(i.name||""))||inputs[0];currentMidiInput=chosen;currentMidiInput.onmidimessage=handleMidiMessage;}
 function refreshMidiOutputs(){if(!midiAccess)return;const sel=$("midiOutput"),prev=sel.value,oldOut=prev?midiAccess.outputs.get(prev):null,prevName=oldOut&&oldOut.name||"";const outputs=[];if(midiAccess.outputs&&typeof midiAccess.outputs.forEach==="function")midiAccess.outputs.forEach(out=>outputs.push(out));sel.innerHTML="";if(!outputs.length){const o=document.createElement("option");o.value="";o.textContent="No MIDI outputs found";sel.appendChild(o);$("midiStatus").textContent="No MIDI outputs found";diag();return;}outputs.forEach(out=>{const o=document.createElement("option");o.value=out.id;o.textContent=out.name||("MIDI · "+out.id);sel.appendChild(o);});if(outputs.some(o=>o.id===prev)&&!(/session\s*1/i.test(prevName)&&outputs.some(o=>/bluetooth/i.test(o.name||""))))sel.value=prev;else{const likely=outputs.find(o=>/bluetooth/i.test(o.name||""))||outputs.find(o=>/go.?piano|roland|midi/i.test(o.name||""))||outputs[0];sel.value=likely.id;}updateMidiUi();selectMidiInput();diag();}
 function chosenMidiOutput(){if($("midiOutput").value==="ble-midi")return bleCharacteristic?bleMidiOutput:null;return midiAccess&&midiAccess.outputs?midiAccess.outputs.get($("midiOutput").value)||null:null;}
-function updateMidiUi(){const out=chosenMidiOutput();$("midiStatus").textContent=out?(out.name||"MIDI connected"):(midiAccess?"MIDI connected":"Not connected");diag();}
+function updateMidiUi(){const out=chosenMidiOutput();$("midiStatus").textContent=out?(out.name||"MIDI connected"):(midiAccess?"MIDI connected":"Not connected");$("legacyInitBtn").disabled=!out;diag();}
 function sendRawNow(str){const out=chosenMidiOutput();if(!out)return false;try{sendLogged(out, checkedOutgoing(str));return true;}catch(err){$("midiNotice").textContent=`MIDI error: ${err.name||"Error"}: ${err.message||String(err)}`;return false;}}
 function rq(address,count){return parseHex("F0 41 10 00 00 00 3D 11 "+address.map(hex).join(" ")+" 00 00 "+hex(count)+" 00 F7");}
 const READ_REQUESTS=[
@@ -558,7 +559,29 @@ $("presetSelect").addEventListener("change",()=>{
 });
 $("savePresetBtn").addEventListener("click",openSaveDialog);
 
-// v65: connection startup reads the GO:Piano but NEVER changes its parameters.
+// v66: restore the OPTIONAL legacy v54 startup operations. This is deliberately
+// opt-in: v54 used to change the instrument on connect, but v65's read-only
+// connection has already been tested on a real Android GO:Piano.
+// Do not send Piano Resonance on connect or during this legacy initialization.
+let legacyInitBusy=false;
+$("legacyInitBtn").addEventListener("click",async()=>{
+ const out=chosenMidiOutput();if(!out||legacyInitBusy)return;
+ if(!window.confirm("Apply v54 startup setup?\n\nThis changes Part 2 to AcousticBass and restores the MFX structure. The current sound may change. Piano Resonance is not changed."))return;
+ legacyInitBusy=true;$("legacyInitBtn").disabled=true;
+ try{
+  // Use the *already-tested* sendLogged/checkedOutgoing and BLE packetizer.
+  sendLogged(out,checkedOutgoing(EFFECT_STRUCTURE));
+  if(out===bleMidiOutput)await new Promise(resolve=>setTimeout(resolve,80));
+  if(chosenMidiOutput()!==out)throw new Error("Device disconnected");
+  sendLogged(out,checkedOutgoing(PART2_INIT_PATCH));
+  setCat("cat2","GO:Piano");fillPatchSelect(2,"AcousticBass");updateOutput();
+  $("midiNotice").textContent="v54 startup settings applied. Reading current GO:Piano state…";
+  setTimeout(()=>{if(chosenMidiOutput()===out)requestPerformanceState(false);},550);
+ }catch(err){$("midiNotice").textContent=`v54 initialization error: ${err.message||String(err)}`;}
+ finally{legacyInitBusy=false;$("legacyInitBtn").disabled=!chosenMidiOutput();}
+});
+
+// v65's confirmed-safe connection startup: READ ONLY, no automatic DT1 writes.
 let startupReadTimer=null, startupReadGeneration=0;
 function requestIdentity(){
  // Historical name retained for the connection entry points; no Identity Request
@@ -702,7 +725,7 @@ async function connectBleMidi(){
   ++startupReadGeneration;++presetReadGeneration;clearTimeout(startupReadTimer);
   if(pressKeyListening)closePressKeyModal();
   const sel=$("midiOutput");if(sel.value==="ble-midi"){sel.innerHTML="";const o=document.createElement("option");o.value="";o.textContent="Bluetooth MIDI disconnected";sel.appendChild(o);}
-  $("midiStatus").textContent="Bluetooth MIDI disconnected";$("midiNotice").textContent="Bluetooth MIDI disconnected. Press Connect to reconnect.";
+  $("midiStatus").textContent="Bluetooth MIDI disconnected";$("legacyInitBtn").disabled=true;$("midiNotice").textContent="Bluetooth MIDI disconnected. Press Connect to reconnect.";
  });
  bleConnectStage="connecting to device GATT";
  bleServer=await device.gatt.connect();
