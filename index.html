@@ -186,6 +186,19 @@
   .part-resonance-space{margin-top:5px;min-height:26px}
   .app-footer{padding-top:4px;padding-bottom:2px}
 }
+
+/* v74: separate the patch stepper buttons without changing their or their arrows' dimensions. */
+.patchnavstack{grid-template-rows:repeat(2,16px);gap:4px}
+.patchnavstack .patchnav{height:16px;min-height:16px;padding:0;font-size:12px;line-height:1}
+
+/* First-generation iPhone SE: give back just a few pixels of vertical breathing room. */
+@media (max-width:360px) and (max-height:680px){
+  .top{margin-bottom:6px}
+  .card{padding:7px 8px;margin-bottom:6px}
+  .preset-wheel-row{margin-bottom:6px}
+  .preset-wheel-row>.preset-card{padding:8px 8px}
+  #partsCard>.part{padding:8px 9px}
+}
 </style>
 </head>
 <body>
