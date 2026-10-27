@@ -265,7 +265,7 @@ $("selectPart1").addEventListener("click",()=>selectActivePart(1));$("selectPart
 [ ["part1Card",1], ["part2Card",2] ].forEach(([id,part])=>$(id).addEventListener("click",e=>{if(mode()!=="Single Tone")return;if(e.target.closest("select, input, button, label, a"))return;selectActivePart(part);}));
 document.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener("change",()=>{updateOutput();actionMessages("mode").forEach(scheduleRaw);syncModWheel();}));
 let midiAccess=null,currentMidiInput=null,initAlreadySent=false,identityPending=false,identityAccepted=false,identityTimer=null,pressKeyListening=false;
-function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v69 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
+function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v70 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
 function allInputs(){const arr=[];if(midiAccess&&midiAccess.inputs&&typeof midiAccess.inputs.forEach==="function")midiAccess.inputs.forEach(i=>arr.push(i));return arr;}
 function selectMidiInput(){const inputs=allInputs(),out=chosenMidiOutput();if(currentMidiInput)currentMidiInput.onmidimessage=null;currentMidiInput=null;if(!inputs.length)return;let chosen=null;if(out){chosen=inputs.find(i=>(i.name||"").toLowerCase()===(out.name||"").toLowerCase());if(!chosen&&/bluetooth/i.test(out.name||""))chosen=inputs.find(i=>/bluetooth/i.test(i.name||""));}if(!chosen)chosen=inputs.find(i=>/bluetooth/i.test(i.name||""))||inputs[0];currentMidiInput=chosen;currentMidiInput.onmidimessage=handleMidiMessage;}
 function refreshMidiOutputs(){if(!midiAccess)return;const sel=$("midiOutput"),prev=sel.value,oldOut=prev?midiAccess.outputs.get(prev):null,prevName=oldOut&&oldOut.name||"";const outputs=[];if(midiAccess.outputs&&typeof midiAccess.outputs.forEach==="function")midiAccess.outputs.forEach(out=>outputs.push(out));sel.innerHTML="";if(!outputs.length){const o=document.createElement("option");o.value="";o.textContent="No MIDI outputs found";sel.appendChild(o);$("midiStatus").textContent="No MIDI outputs found";diag();return;}outputs.forEach(out=>{const o=document.createElement("option");o.value=out.id;o.textContent=out.name||("MIDI · "+out.id);sel.appendChild(o);});if(outputs.some(o=>o.id===prev)&&!(/session\s*1/i.test(prevName)&&outputs.some(o=>/bluetooth/i.test(o.name||""))))sel.value=prev;else{const likely=outputs.find(o=>/bluetooth/i.test(o.name||""))||outputs.find(o=>/go.?piano|roland|midi/i.test(o.name||""))||outputs[0];sel.value=likely.id;}updateMidiUi();selectMidiInput();diag();}
@@ -495,9 +495,8 @@ syncModWheel();
  // to the octave writes: each command below writes only the stated parameter.
  const messages=[
   EFFECT_STRUCTURE,                         // Restore MFX Structure before Resonance setup
-  message([0x50,0x0C],[0x00]),             // Single Tone: Part 1 KeyboardRangeLower = C-1
-  message([0x51,0x01],[0x00]),             // Part 2 Switch = OFF
-  message([0x51,0x0D],[0x7F]),             // Part 2 KeyboardRangeUpper = G9
+  // Keyboard ranges and Part 2 Switch are set once by activationMessages(1)
+  // at the end, after the patches and volumes have been restored.
   // Do not write Split Point or split ranges when recalling default.
   message([0x06,0x01],[0x30]),             // Reverb Level 4 (raw 48)
   message([0x20,0x04],[0x00,0x44,0x00,0x64]), // Part 1 GO Grand + Volume 100 (contiguous DT1)
