@@ -265,7 +265,7 @@ $("selectPart1").addEventListener("click",()=>selectActivePart(1));$("selectPart
 [ ["part1Card",1], ["part2Card",2] ].forEach(([id,part])=>$(id).addEventListener("click",e=>{if(mode()!=="Single Tone")return;if(e.target.closest("select, input, button, label, a"))return;selectActivePart(part);}));
 document.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener("change",()=>{updateOutput();actionMessages("mode").forEach(scheduleRaw);syncModWheel();}));
 let midiAccess=null,currentMidiInput=null,initAlreadySent=false,identityPending=false,identityAccepted=false,identityTimer=null,pressKeyListening=false;
-function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v68 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
+function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v69 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
 function allInputs(){const arr=[];if(midiAccess&&midiAccess.inputs&&typeof midiAccess.inputs.forEach==="function")midiAccess.inputs.forEach(i=>arr.push(i));return arr;}
 function selectMidiInput(){const inputs=allInputs(),out=chosenMidiOutput();if(currentMidiInput)currentMidiInput.onmidimessage=null;currentMidiInput=null;if(!inputs.length)return;let chosen=null;if(out){chosen=inputs.find(i=>(i.name||"").toLowerCase()===(out.name||"").toLowerCase());if(!chosen&&/bluetooth/i.test(out.name||""))chosen=inputs.find(i=>/bluetooth/i.test(i.name||""));}if(!chosen)chosen=inputs.find(i=>/bluetooth/i.test(i.name||""))||inputs[0];currentMidiInput=chosen;currentMidiInput.onmidimessage=handleMidiMessage;}
 function refreshMidiOutputs(){if(!midiAccess)return;const sel=$("midiOutput"),prev=sel.value,oldOut=prev?midiAccess.outputs.get(prev):null,prevName=oldOut&&oldOut.name||"";const outputs=[];if(midiAccess.outputs&&typeof midiAccess.outputs.forEach==="function")midiAccess.outputs.forEach(out=>outputs.push(out));sel.innerHTML="";if(!outputs.length){const o=document.createElement("option");o.value="";o.textContent="No MIDI outputs found";sel.appendChild(o);$("midiStatus").textContent="No MIDI outputs found";diag();return;}outputs.forEach(out=>{const o=document.createElement("option");o.value=out.id;o.textContent=out.name||("MIDI · "+out.id);sel.appendChild(o);});if(outputs.some(o=>o.id===prev)&&!(/session\s*1/i.test(prevName)&&outputs.some(o=>/bluetooth/i.test(o.name||""))))sel.value=prev;else{const likely=outputs.find(o=>/bluetooth/i.test(o.name||""))||outputs.find(o=>/go.?piano|roland|midi/i.test(o.name||""))||outputs[0];sel.value=likely.id;}updateMidiUi();selectMidiInput();diag();}
@@ -380,12 +380,26 @@ function updatePresetAvailability(){
  $("presetSelect").classList.toggle("muted",disabled);
  $("savePresetBtn").classList.toggle("muted",disabled);
 }
+// Keep recall and save-slot labels in sync with the 32 names read from GO:Piano.
+function presetSlotLabel(name,i){
+ const shown=(name||"").replace(/\0/g,"").trim();
+ return (i+1)+". "+(name===null?"reading…":(!shown||shown==="INIT PERFORM"?"empty":shown));
+}
+function updateSaveSlotOptions(){
+ const sel=$("saveSlot"),prev=sel.value;
+ sel.innerHTML="";
+ presetNames.forEach((name,i)=>{
+  const o=document.createElement("option");o.value=String(i);o.textContent=presetSlotLabel(name,i);sel.appendChild(o);
+ });
+ sel.value=[...sel.options].some(o=>o.value===prev)?prev:"0";
+}
 function updatePresetOptions(){
  const sel=$("presetSelect"),prev=sel.value;
  sel.innerHTML="";
  const d=document.createElement("option");d.value="default";d.textContent="default";sel.appendChild(d);
- presetNames.forEach((name,i)=>{const o=document.createElement("option");o.value=String(i);const shown=(name||"").replace(/\0/g,"").trim();o.textContent=(i+1)+". "+(name===null?"reading…":(!shown||shown==="INIT PERFORM"?"empty":shown));o.disabled=name===null;sel.appendChild(o);});
+ presetNames.forEach((name,i)=>{const o=document.createElement("option");o.value=String(i);o.textContent=presetSlotLabel(name,i);o.disabled=name===null;sel.appendChild(o);});
  if([...sel.options].some(o=>o.value===prev))sel.value=prev;else sel.value="default";
+ updateSaveSlotOptions();
  updatePresetAvailability();
 }
 function requestPresetNames(){
@@ -486,13 +500,11 @@ syncModWheel();
   message([0x51,0x0D],[0x7F]),             // Part 2 KeyboardRangeUpper = G9
   // Do not write Split Point or split ranges when recalling default.
   message([0x06,0x01],[0x30]),             // Reverb Level 4 (raw 48)
-  message([0x20,0x04],[0x00,0x44,0x00]), // Part 1 GO Grand patch only
-  message([0x20,0x07],[0x64]),             // Part 1 Volume = 100
+  message([0x20,0x04],[0x00,0x44,0x00,0x64]), // Part 1 GO Grand + Volume 100 (contiguous DT1)
   message([0x50,0x00],[0x40]),             // Part 1 Octave Shift = 0
   RESONANCE_ON,                             // Part 1 Piano Resonance type
   RESONANCE_ON_EXTRA,                       // Part 1 Piano Resonance switch ON
-  message([0x21,0x04],[0x57,0x49,0x25]), // Part 2 AcousticBass patch only
-  message([0x21,0x07],[0x64]),             // Part 2 Volume = 100
+  message([0x21,0x04],[0x57,0x49,0x25,0x64]), // Part 2 AcousticBass + Volume 100 (contiguous DT1)
   message([0x51,0x00],[0x40]),             // Part 2 Octave Shift = 0
   // Apply Single Tone LAST, after all patch/volume changes. This is the exact
   // four-message activation sequence proven to work when switching to Part 1.
