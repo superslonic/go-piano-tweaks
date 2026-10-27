@@ -265,7 +265,7 @@ $("selectPart1").addEventListener("click",()=>selectActivePart(1));$("selectPart
 [ ["part1Card",1], ["part2Card",2] ].forEach(([id,part])=>$(id).addEventListener("click",e=>{if(mode()!=="Single Tone")return;if(e.target.closest("select, input, button, label, a"))return;selectActivePart(part);}));
 document.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener("change",()=>{updateOutput();actionMessages("mode").forEach(scheduleRaw);syncModWheel();}));
 let midiAccess=null,currentMidiInput=null,initAlreadySent=false,identityPending=false,identityAccepted=false,identityTimer=null,pressKeyListening=false;
-function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v67 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
+function diag(){const secure=window.isSecureContext?"secure context":"NOT secure context";$("diagnostic").textContent=`v68 · ${secure} · ${navigator.requestMIDIAccess?"Web MIDI API present":"Web MIDI API absent"} · ${navigator.bluetooth?"Web Bluetooth present":"Web Bluetooth absent"}`;}
 function allInputs(){const arr=[];if(midiAccess&&midiAccess.inputs&&typeof midiAccess.inputs.forEach==="function")midiAccess.inputs.forEach(i=>arr.push(i));return arr;}
 function selectMidiInput(){const inputs=allInputs(),out=chosenMidiOutput();if(currentMidiInput)currentMidiInput.onmidimessage=null;currentMidiInput=null;if(!inputs.length)return;let chosen=null;if(out){chosen=inputs.find(i=>(i.name||"").toLowerCase()===(out.name||"").toLowerCase());if(!chosen&&/bluetooth/i.test(out.name||""))chosen=inputs.find(i=>/bluetooth/i.test(i.name||""));}if(!chosen)chosen=inputs.find(i=>/bluetooth/i.test(i.name||""))||inputs[0];currentMidiInput=chosen;currentMidiInput.onmidimessage=handleMidiMessage;}
 function refreshMidiOutputs(){if(!midiAccess)return;const sel=$("midiOutput"),prev=sel.value,oldOut=prev?midiAccess.outputs.get(prev):null,prevName=oldOut&&oldOut.name||"";const outputs=[];if(midiAccess.outputs&&typeof midiAccess.outputs.forEach==="function")midiAccess.outputs.forEach(out=>outputs.push(out));sel.innerHTML="";if(!outputs.length){const o=document.createElement("option");o.value="";o.textContent="No MIDI outputs found";sel.appendChild(o);$("midiStatus").textContent="No MIDI outputs found";diag();return;}outputs.forEach(out=>{const o=document.createElement("option");o.value=out.id;o.textContent=out.name||("MIDI · "+out.id);sel.appendChild(o);});if(outputs.some(o=>o.id===prev)&&!(/session\s*1/i.test(prevName)&&outputs.some(o=>/bluetooth/i.test(o.name||""))))sel.value=prev;else{const likely=outputs.find(o=>/bluetooth/i.test(o.name||""))||outputs.find(o=>/go.?piano|roland|midi/i.test(o.name||""))||outputs[0];sel.value=likely.id;}updateMidiUi();selectMidiInput();diag();}
@@ -283,6 +283,9 @@ const READ_REQUESTS=[
  "F0 41 10 00 00 00 3D 11 01 00 00 0C 00 00 00 01 00 F7"
 ];
 let readingPerformanceState=false, homeReadInProgress=false;
+// Only a physical HOME event authorizes restoration of the HOME default Part 2 sound.
+// A newer HOME event or a deliberate preset selection cancels unfinished HOME work.
+let homeRestoreGeneration=0;
 function requestPerformanceState(isHome=false){
  const out=chosenMidiOutput();if(!out)return;
  readingPerformanceState=true;homeReadInProgress=!!isHome;
@@ -311,6 +314,7 @@ function handleMidiMessage(event){
  // HOME normally starts with CC 0 / value 0x55 on channel 16.
  // Accept a message with extra bytes too, in case a MIDI bridge groups data.
  if((d[0]&0xF0)===0xB0&&d.length>=3&&d[1]===0x00&&d[2]===0x55){
+  const homeGeneration=++homeRestoreGeneration;
   $('presetSelect').value='default';$('split').value='C4';
   // HOME selects Part 1 Single Tone. Split Point C4 is only a UI default;
   // it must NOT be written to the active Part 1/2 keyboard range boundaries.
@@ -322,8 +326,24 @@ function handleMidiMessage(event){
    activationMessages(1).forEach(s=>sendLogged(out,checkedOutgoing(s)));
    sendModValue(1,0);sendModValue(2,0);
   }catch(err){$('midiNotice').textContent=`HOME reset error: ${err.message||String(err)}`;}}
-  $('midiNotice').textContent='HOME detected — restoring full-range Single Tone, then reading GO:Piano state…';
-  setTimeout(()=>requestPerformanceState(true),300);return;
+  $('midiNotice').textContent='HOME detected — restoring full-range Single Tone and AcousticBass…';
+  // GO:Piano finishes its own HOME reset shortly after sending the MIDI event.
+  // Set AcousticBass AFTER that reset, unconditionally (never during routine reads).
+  // Keep the known-good v67 range reset above unchanged.
+  setTimeout(async()=>{
+   if(homeGeneration!==homeRestoreGeneration||chosenMidiOutput()!==out)return;
+   try{
+    sendLogged(out,checkedOutgoing(EFFECT_STRUCTURE));
+    // This is the same MFX -> AcousticBass ordering tested at startup in v67.
+    await new Promise(resolve=>setTimeout(resolve,out===bleMidiOutput?80:25));
+    if(homeGeneration!==homeRestoreGeneration||chosenMidiOutput()!==out)return;
+    sendLogged(out,checkedOutgoing(PART2_INIT_PATCH));
+    setCat('cat2','GO:Piano');fillPatchSelect(2,'AcousticBass');updateOutput();
+    await new Promise(resolve=>setTimeout(resolve,out===bleMidiOutput?180:80));
+    if(homeGeneration!==homeRestoreGeneration||chosenMidiOutput()!==out)return;
+    requestPerformanceState(false);
+   }catch(err){$('midiNotice').textContent=`HOME restore error: ${err.message||String(err)}`;}
+  },300);return;
  }
  if(d[0]!==0xF0||d.length<13||d[1]!==0x41||d[6]!==0x3D||d[7]!==0x12)return;
  // Performance Control Channel: address 02 00 00 09, one data byte.
@@ -341,7 +361,7 @@ function handleMidiMessage(event){
  const a=d[10],b=d[11],addr3=d[8],addr4=d[9];
  if(addr3===0x10&&a===0x06&&b===0x01&&d.length>=15){const raw=d[12];let best=4,dist=Infinity;Object.entries(REVERB_MAP).forEach(([level,val])=>{const delta=Math.abs(val-raw);if(delta<dist){dist=delta;best=Number(level);}});$('reverb').value=String(best);updateOutput();}
  else if(addr3===0x10&&a===0x20&&b===0x04&&d.length>=18){setPatchFromReply(d[12],d[13],d[14]);$('vol1').value=String(d[15]);$('vol1Slider').value=String(d[15]);updateOutput();}
- else if(addr3===0x10&&a===0x21&&b===0x04&&d.length>=18){if(homeReadInProgress&&d[12]===0x79&&d[13]===0x00&&d[14]===0x00){if(sendRawNow(PART2_INIT_PATCH)){setCat("cat2","GO:Piano");fillPatchSelect(2,"AcousticBass");}}else{const p=PATCHES.find(x=>x.msb===d[12]&&x.lsb===d[13]&&x.pc-1===d[14]);if(p){$('cat2').value=p.category;fillPatchSelect(2,p.name);}} $('vol2').value=String(d[15]);$('vol2Slider').value=String(d[15]);updateOutput();}
+ else if(addr3===0x10&&a===0x21&&b===0x04&&d.length>=18){const p=PATCHES.find(x=>x.msb===d[12]&&x.lsb===d[13]&&x.pc-1===d[14]);if(p){$('cat2').value=p.category;fillPatchSelect(2,p.name);} $('vol2').value=String(d[15]);$('vol2Slider').value=String(d[15]);updateOutput();}
  else if(addr3===0x10&&a===0x50&&b===0x00&&d.length>=28){const oct=hex(d[12]),found=Object.entries(OCTAVE_MAP).find(([label,val])=>val===oct);if(found)$('oct1').value=found[0];window._goP1Enabled=d[13]===0x01;window._goP1RangeLower=d[24];const sf=Object.entries(SPLIT_MAP).find(([label,val])=>val===d[24]);if(sf)$('split').value=sf[0];updateOutput();}
  else if(addr3===0x10&&a===0x51&&b===0x00&&d.length>=28){const oct=hex(d[12]),found=Object.entries(OCTAVE_MAP).find(([label,val])=>val===oct);if(found)$('oct2').value=found[0];window._goP2Enabled=d[13]===0x01;const splitCandidate=Object.entries(SPLIT_MAP).find(([label,val])=>val-1===d[25]);if(splitCandidate)$('split').value=splitCandidate[0];if(window._goP1Enabled&&window._goP2Enabled){const p1Lower=Number(window._goP1RangeLower);const p2Upper=Number(d[25]);if(p1Lower===0x7F&&p2Upper===0x7F){activePart=2;document.querySelector('input[name="mode"][value="Single Tone"]').checked=true;}else{const isSplit=p1Lower>0&&p1Lower<0x7F&&p2Upper===p1Lower-1;document.querySelector('input[name="mode"][value="'+(isSplit?"Split":"Layer")+'"]').checked=true;}}else{activePart=1;document.querySelector('input[name="mode"][value="Single Tone"]').checked=true;}updateOutput();}
  else if(addr3===0x10&&a===0x0A&&b===0x00&&d.length>=14){window._goPianoMfxType=d[12];}
@@ -417,6 +437,7 @@ function restoreInitPerformance(){
  sendNext();
 }
 function selectUserPerformance(slot){
+ ++homeRestoreGeneration; // User preset takes precedence over a pending HOME restoration.
  const out=chosenMidiOutput();if(!out)return;
  // Every recalled User Performance starts with Part 1 selected in the UI,
  // even when the stored mode is Layer or Split.
@@ -440,6 +461,7 @@ function selectUserPerformance(slot){
  }catch(err){$("midiNotice").textContent=`Preset recall error: ${err.name||"Error"}: ${err.message||String(err)}`;}
 }
 function resetToDefaultPreset(){
+ ++homeRestoreGeneration; // A manual default selection cancels a pending HOME restoration.
  const out=chosenMidiOutput();
  modWheelPosition=0;syncModWheel();
  // Keep the UI on the known initial state while the instrument is reset.
@@ -471,7 +493,10 @@ syncModWheel();
   RESONANCE_ON_EXTRA,                       // Part 1 Piano Resonance switch ON
   message([0x21,0x04],[0x57,0x49,0x25]), // Part 2 AcousticBass patch only
   message([0x21,0x07],[0x64]),             // Part 2 Volume = 100
-  message([0x51,0x00],[0x40])              // Part 2 Octave Shift = 0
+  message([0x51,0x00],[0x40]),             // Part 2 Octave Shift = 0
+  // Apply Single Tone LAST, after all patch/volume changes. This is the exact
+  // four-message activation sequence proven to work when switching to Part 1.
+  ...activationMessages(1)
  ];
  let i=0;
  const sendNext=()=>{
