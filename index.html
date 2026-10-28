@@ -199,6 +199,16 @@
   .preset-wheel-row>.preset-card{padding:8px 8px}
   #partsCard>.part{padding:8px 9px}
 }
+
+/* v75: separate the patch arrows by 2px, enlarge the touchable controls
+   without shrinking the glyphs, and preserve the compact iPhone SE layout. */
+.patchfield .patchpicker{grid-template-columns:minmax(0,1fr) 30px}
+.patchnavstack{grid-template-rows:repeat(2,18px);gap:2px}
+.patchnavstack .patchnav{width:30px;height:18px;min-height:18px;font-size:12px;line-height:1;touch-action:manipulation}
+
+/* Chrome for Android highlights the whole clickable Part panel when a child
+   button is tapped; suppress only that native tap-flash, not button focus. */
+.part-card{-webkit-tap-highlight-color:transparent}
 </style>
 </head>
 <body>
