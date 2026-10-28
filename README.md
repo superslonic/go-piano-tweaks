@@ -5,10 +5,16 @@ GO:PIANO Tweaks is a browser-based MIDI editor for the Roland GO:PIANO.
 Features
 
 • Two independent parts
+
+
 • Access to over 1,400 built-in patches, instead of just the 40 sounds available from the instrument’s panel, including 30 drum kits
+
 • Single Tone, Layer and Split modes
+
 • Save up to 32 user presets directly to the instrument
+
 • Mod Wheel for expressive real-time control
+
 • USB and Bluetooth MIDI support
 
 How to use
