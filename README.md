@@ -1,4 +1,6 @@
-GO:PIANO Tweaks
+GO:PIANO Tweaks web app
+
+https://superslonic.github.io/go-piano-tweaks
 
 GO:PIANO Tweaks is a browser-based MIDI editor for the Roland GO:PIANO.
 
@@ -31,6 +33,4 @@ Android:
 
 Simply open GO:PIANO Tweaks in Chrome.
 
-Web app
 
-https://superslonic.github.io/go-piano-tweaks
