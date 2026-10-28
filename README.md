@@ -20,7 +20,7 @@ How to use
 
 iPhone / iPad:
 
-You’ll need the Web MIDI Browser app.
+You’ll need the Web MIDI Browser app (free).
 https://apps.apple.com/us/app/web-midi-browser/id953846217
 
 In its settings, set up Bluetooth MIDI and turn on “Enable SysEx”.
