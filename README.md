@@ -18,6 +18,7 @@ Features
 
 • USB and Bluetooth MIDI support
 
+
 How to use
 
 iPhone / iPad:
