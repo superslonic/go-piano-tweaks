@@ -23,6 +23,7 @@ iPhone / iPad:
 
 You’ll need the Web MIDI Browser app.
 https://apps.apple.com/us/app/web-midi-browser/id953846217
+
 In its settings, set up Bluetooth MIDI and turn on “Enable SysEx”.
 
 Then open GO:PIANO Tweaks in Web MIDI Browser.
