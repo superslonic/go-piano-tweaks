@@ -460,6 +460,7 @@ function renderSevenSegment(id,text){
   el.appendChild(d);
  }
 }
+// Exact 5x7 characters transcribed from the GO:PIANO display.
 const OCTAVE_MATRIX_FONT={
  "0":["01110","10001","10011","10101","11001","10001","01110"],
  "1":["00100","01100","00100","00100","00100","00100","01110"],
@@ -498,10 +499,10 @@ function renderOctaveMatrix(id,text){
  paintDotMatrix(id,chars);
 }
 function renderReverbMatrix(id,text){
- // As on GO:PIANO: single-digit reverb levels use the left position,
- // while the right position remains present but unlit. Level 10 uses both.
+ // As on GO:PIANO: always preserve both 5x7 positions.
+ // Levels 0–9 illuminate only the RIGHT position; level 10 uses both.
  const value=String(text);
- const chars=value==='10'?['1','0']:[value,' '];
+ const chars=value==='10'?['1','0']:[' ',value];
  paintDotMatrix(id,chars);
 }
 function renderDisplays(){
