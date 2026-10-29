@@ -300,7 +300,7 @@
 <div class="modalback" id="pressKeyModal" hidden><div class="modalbox" role="dialog" aria-modal="true" aria-labelledby="pressKeyTitle"><h2 id="pressKeyTitle">Set Split Point</h2><p>Press a key on the GO:Piano keyboard.</p><div class="notice" id="pressKeyNotice">Waiting for a MIDI note…</div><div class="modalbuttons"><button type="button" class="btn" id="cancelPressKeyBtn">Cancel</button></div></div></div>
 <div class="modalback" id="saveModal" hidden>
  <div class="modalbox" role="dialog" aria-modal="true" aria-labelledby="saveModalTitle">
-  <h2 id="saveModalTitle">Save Preset</h2>
+  <h2 id="saveModalTitle">Save preset</h2>
   <label for="saveSlot">Preset slot</label><select id="saveSlot"><option value="0">1</option><option value="1">2</option><option value="2">3</option><option value="3">4</option><option value="4">5</option><option value="5">6</option><option value="6">7</option><option value="7">8</option><option value="8">9</option><option value="9">10</option><option value="10">11</option><option value="11">12</option><option value="12">13</option><option value="13">14</option><option value="14">15</option><option value="15">16</option><option value="16">17</option><option value="17">18</option><option value="18">19</option><option value="19">20</option><option value="20">21</option><option value="21">22</option><option value="22">23</option><option value="23">24</option><option value="24">25</option><option value="25">26</option><option value="26">27</option><option value="27">28</option><option value="28">29</option><option value="29">30</option><option value="30">31</option><option value="31">32</option></select>
   <label for="saveName">Preset name (up to 12 ASCII characters)</label><input id="saveName" type="text" maxlength="12" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. LIVE PIANO">
   <div class="modalerror" id="saveModalError" aria-live="polite"></div>
@@ -452,7 +452,15 @@ function sendModValue(part,value){const out=chosenMidiOutput();if(!out)return;tr
 function sendModValueForCurrentMode(value){if(mode()==="Layer"){sendModValue(1,value);sendModValue(2,value);}else{sendModValue(activePart,value);}}
 function resetBothModWheels(){modWheelPosition=0;syncModWheel();sendModValue(1,0);sendModValue(2,0);}
 function syncModWheel(){const el=$("modWheel"),v=Math.max(0,Math.min(127,Number(modWheelPosition)||0));$("modWheelFill").style.height=(v/127*100)+"%";el.setAttribute("aria-valuenow",String(v));}
-function resetModForPatch(part){sendModValue(part,0);}
+// The new patch must be sent first. Queue CC74/CC1 behind its DT1 so
+// both resets take effect on the newly selected sound, for the selected Part only.
+function resetControlsForPatch(part){
+ const channel=part===2?0xB1:0xB0;
+ setKnobValue('cutoff'+part,64,false);
+ modWheelPosition=0;syncModWheel();
+ scheduleRaw([channel,0x4A,64].map(hex).join(' ')); // Cutoff neutral
+ scheduleRaw([channel,0x01,0].map(hex).join(' ')); // Mod Wheel zero
+}
 function changeOctave(part,delta){const id="oct"+part,values=["-3","-2","-1","0","+1","+2","+3"];let idx=values.indexOf($(id).value);idx=Math.max(0,Math.min(values.length-1,idx+delta));if(values[idx]===$(id).value)return;$(id).value=values[idx];updateOutput();scheduleRaw("F0 41 10 00 00 00 3D 12 10 00 "+(part===1?"50 00 ":"51 00 ")+OCTAVE_MAP[$(id).value]+" 00 F7");}
 [1,2].forEach(part=>{ $("oct"+part+"Minus").addEventListener("click",()=>changeOctave(part,-1)); $("oct"+part+"Plus").addEventListener("click",()=>changeOctave(part,1)); });
 function setModWheelFromPointer(e){const el=$("modWheel"),r=el.getBoundingClientRect();if(!r.height)return;const ratio=Math.max(0,Math.min(1,(r.bottom-e.clientY)/r.height));const value=Math.round(ratio*127);if(value===modWheelPosition){syncModWheel();return;}modWheelPosition=value;syncModWheel();sendModValueForCurrentMode(value);}
@@ -463,10 +471,10 @@ $("modWheel").addEventListener("pointermove",e=>{if(modWheelPointerActive)setMod
 $("modWheel").addEventListener("keydown",e=>{let v=modWheelPosition;if(e.key==="ArrowRight"||e.key==="ArrowUp")v=Math.min(127,v+1);else if(e.key==="ArrowLeft"||e.key==="ArrowDown")v=Math.max(0,v-1);else if(e.key==="Home")v=0;else if(e.key==="End")v=127;else return;e.preventDefault();if(v!==modWheelPosition){modWheelPosition=v;syncModWheel();sendModValue(modTargetPart(),v);}});
 function updateOutput(){syncAllKnobs();const m=mode(),splitInactive=m!=="Split";$("splitField").classList.toggle("muted",splitInactive);$("split").disabled=splitInactive;$("part1Card").classList.toggle("part-panel-hidden",activePart!==1);$("part2Card").classList.toggle("part-panel-hidden",activePart!==2);$("selectPart1").classList.toggle("active-part",activePart===1);$("selectPart2").classList.toggle("active-part",activePart===2);$("selectPart1").setAttribute("aria-pressed",String(activePart===1));$("selectPart2").setAttribute("aria-pressed",String(activePart===2));$("part1TabPatch").textContent=$("patch1").value||"";$("part2TabPatch").textContent=$("patch2").value||"";[1,2].forEach(part=>{const list=PATCHES.filter(p=>p.category===$("cat"+part).value),idx=list.findIndex(p=>p.name===$("patch"+part).value);$("prevPatch"+part).disabled=idx<=0;$("nextPatch"+part).disabled=idx<0||idx>=list.length-1;});renderDisplays();for(const id of ["vol1","vol2"]){const v=knobClamp($(id).value);$(id).value=String(v);$(id+"Slider").value=String(v);syncKnob(id);}}
 function changed(id){updateOutput();actionMessages(id).forEach(scheduleRaw);}
-function choosePatch(part,delta){const cat=$("cat"+part).value,list=PATCHES.filter(p=>p.category===cat);if(!list.length)return;let i=list.findIndex(p=>p.name===$("patch"+part).value);i=Math.max(0,Math.min(list.length-1,i+delta));$("patch"+part).value=list[i].name;resetModForPatch(part);if(part===1)updateResonanceAvailability();changed("patch"+part);if(part===1)sendResonanceForCurrentPatch();}
-$("cat1").addEventListener("change",()=>{fillPatchSelect(1);resetModForPatch(1);updateResonanceAvailability();changed("cat1");sendResonanceForCurrentPatch();});
-$("cat2").addEventListener("change",()=>{fillPatchSelect(2);resetModForPatch(2);changed("cat2");});
-["patch1","patch2","split"].forEach(id=>$(id).addEventListener("change",()=>{if(id==="patch1"||id==="patch2")resetModForPatch(Number(id.slice(-1)));if(id==="patch1")updateResonanceAvailability();changed(id);if(id==="patch1")sendResonanceForCurrentPatch();}));
+function choosePatch(part,delta){const cat=$("cat"+part).value,list=PATCHES.filter(p=>p.category===cat);if(!list.length)return;let i=list.findIndex(p=>p.name===$("patch"+part).value);const next=Math.max(0,Math.min(list.length-1,i+delta));if(next===i)return;$("patch"+part).value=list[next].name;if(part===1)updateResonanceAvailability();changed("patch"+part);resetControlsForPatch(part);if(part===1)sendResonanceForCurrentPatch();}
+$("cat1").addEventListener("change",()=>{fillPatchSelect(1);updateResonanceAvailability();changed("cat1");resetControlsForPatch(1);sendResonanceForCurrentPatch();});
+$("cat2").addEventListener("change",()=>{fillPatchSelect(2);changed("cat2");resetControlsForPatch(2);});
+["patch1","patch2","split"].forEach(id=>$(id).addEventListener("change",()=>{if(id==="patch1")updateResonanceAvailability();changed(id);if(id==="patch1"||id==="patch2")resetControlsForPatch(Number(id.slice(-1)));if(id==="patch1")sendResonanceForCurrentPatch();}));
 $("oct1").addEventListener("change",()=>{updateOutput();actionMessages("oct1").forEach(scheduleRaw);});
 $("oct2").addEventListener("change",()=>{updateOutput();actionMessages("oct2").forEach(scheduleRaw);});
 
@@ -520,7 +528,7 @@ function hideKnobReadoutSoon(){clearTimeout(knobTooltipTimer);knobTooltipTimer=s
 function showKnobModal(key){
  if(knobModalKey)return;
  knobModalKey=key;$('knobReadout').hidden=true;clearTimeout(knobTooltipTimer);
- $('knobModalTitle').textContent=(knobConfigs[key].part===1?'Part 1 · ':'Part 2 · ')+(key.startsWith('cutoff')?'Cutoff':'Volume');
+ $('knobModalTitle').textContent=key.startsWith('cutoff')?'Cutoff':'Volume';
  $('knobModal').hidden=false;
  redrawKnob($('knobLarge'),knobVal(key));$('knobFineValue').textContent=String(knobVal(key));
  $('knobLarge').setAttribute('aria-label',key.startsWith('cutoff')?'Cutoff fine adjustment':'Volume fine adjustment');
