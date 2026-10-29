@@ -243,30 +243,7 @@
 @media(max-width:360px){.knob{width:43px;height:43px}.knob-large{height:154px;width:154px}.knob-unit{flex-basis:49px}.knob-pair{gap:3px}.knob-label{font-size:10px}}
 @media(max-width:360px){.part .resonance{margin-top:4px}.part-card{padding-bottom:6px}}
 
-/* v88: even, larger 7-segment bars for Reverb Level only.
-   The 14 x 20px glyphs match the 5x7 octave glyph height exactly;
-   octave-shift rendering, dimensions, and MIDI code are unchanged. */
-.reverbbox .digital-display.seven-segment{gap:4px;transform:skewX(-6deg)}
-.reverbbox .digital-display.seven-segment .digit{flex:0 0 14px;width:14px;height:20px}
-.reverbbox .seven-segment .seg{border-radius:.5px}
-.reverbbox .seven-segment .seg.a,
-.reverbbox .seven-segment .seg.g,
-.reverbbox .seven-segment .seg.d{left:2px;right:auto;width:10px;height:2px;bottom:auto}
-.reverbbox .seven-segment .seg.a{top:0}
-.reverbbox .seven-segment .seg.g{top:9px}
-.reverbbox .seven-segment .seg.d{top:18px}
-.reverbbox .seven-segment .seg.f,
-.reverbbox .seven-segment .seg.b,
-.reverbbox .seven-segment .seg.e,
-.reverbbox .seven-segment .seg.c{width:2px;height:7px;right:auto;bottom:auto}
-.reverbbox .seven-segment .seg.f,
-.reverbbox .seven-segment .seg.e{left:0}
-.reverbbox .seven-segment .seg.b,
-.reverbbox .seven-segment .seg.c{left:12px}
-.reverbbox .seven-segment .seg.f,
-.reverbbox .seven-segment .seg.b{top:2px}
-.reverbbox .seven-segment .seg.e,
-.reverbbox .seven-segment .seg.c{top:11px}
+/* v89: both displays use the same 5x7 pixel font and permanent two-glyph footprint. */
 </style>
 </head>
 <body>
@@ -293,7 +270,7 @@
 <label class="mode"><input type="radio" name="mode" value="Split"><span>Split</span></label>
 </div></div>
 <div class="compacttop"><div class="field splitfield muted" id="splitField"><label for="split">Split Point</label><div class="presskey-row"><select id="split"></select><button type="button" class="btn presskey-btn" id="pressKeyBtn">Press Key</button></div></div>
-<div class="field"><label>Reverb Level</label><div class="reverbbox"><button type="button" class="btn stepbtn" id="reverbMinus" aria-label="Decrease Reverb Level">−</button><span class="digital-display seven-segment" id="reverbValue" aria-label="Reverb Level"></span><button type="button" class="btn stepbtn" id="reverbPlus" aria-label="Increase Reverb Level">+</button><input type="hidden" id="reverb" value="4"></div></div></div></section>
+<div class="field"><label>Reverb Level</label><div class="reverbbox"><button type="button" class="btn stepbtn" id="reverbMinus" aria-label="Decrease Reverb Level">−</button><span class="digital-display dot-matrix" id="reverbValue" aria-label="Reverb Level"></span><button type="button" class="btn stepbtn" id="reverbPlus" aria-label="Increase Reverb Level">+</button><input type="hidden" id="reverb" value="4"></div></div></div></section>
 </div>
 <section class="card" id="partsCard">
 <div class="part-tabs">
@@ -484,7 +461,7 @@ function renderSevenSegment(id,text){
  }
 }
 const OCTAVE_MATRIX_FONT={
- "0":["01110","10001","10001","10001","10001","10001","01110"],
+ "0":["01110","10001","10011","10101","11001","10001","01110"],
  "1":["00100","01100","00100","00100","00100","00100","01110"],
  "2":["01110","10001","00001","00010","00100","01000","11111"],
  // GO:PIANO's distinctive 3, transcribed from the instrument display.
@@ -499,24 +476,36 @@ const OCTAVE_MATRIX_FONT={
  "-":["00000","00000","00000","11111","00000","00000","00000"],
  " ":["00000","00000","00000","00000","00000","00000","00000"]
 };
-function renderOctaveMatrix(id,text){
+function paintDotMatrix(id,chars){
  const el=$(id);if(!el)return;
- // Two positions are always present: sign on the left, number on the right.
- // When octave is 0, retain the unlit left 5x7 grid instead of removing it.
- const value=String(text),chars=/^[+-][0-3]$/.test(value)?[value[0],value[1]]:[' ',value==='0'?'0':value.slice(-1)];
  el.replaceChildren();
  for(const ch of chars){
   const glyph=document.createElement('span');glyph.className='matrix-char';
   for(const row of OCTAVE_MATRIX_FONT[ch]||OCTAVE_MATRIX_FONT[' ']){
    for(const bit of row){
-    const px=document.createElement('i');px.className='matrix-pixel'+(bit==='1'?' on':'');glyph.appendChild(px);
+    const px=document.createElement('i');
+    px.className='matrix-pixel'+(bit==='1'?' on':'');
+    glyph.appendChild(px);
    }
   }
   el.appendChild(glyph);
  }
 }
+function renderOctaveMatrix(id,text){
+ // Always show the sign position (unlit for zero) and a right-hand digit.
+ const value=String(text);
+ const chars=/^[+-][0-3]$/.test(value)?[value[0],value[1]]:[' ',value==='0'?'0':value.slice(-1)];
+ paintDotMatrix(id,chars);
+}
+function renderReverbMatrix(id,text){
+ // As on GO:PIANO: single-digit reverb levels use the left position,
+ // while the right position remains present but unlit. Level 10 uses both.
+ const value=String(text);
+ const chars=value==='10'?['1','0']:[value,' '];
+ paintDotMatrix(id,chars);
+}
 function renderDisplays(){
- renderSevenSegment('reverbValue',String($('reverb').value).padStart(2,'0'));
+ renderReverbMatrix('reverbValue',$('reverb').value);
  for(const part of [1,2])renderOctaveMatrix('oct'+part+'Value',$('oct'+part).value);
 }
 let modWheelPosition=0;
