@@ -298,8 +298,8 @@ let activePart=1;
 const messageIndexes={reverb:[0],patch1:[1],cat1:[1],vol1:[1],patch2:[2],cat2:[2],vol2:[2],oct1:[3],oct2:[4],split:[3,4],mode:[3,4]};
 let autoSendTimer=null,stateReadTimer=null;const pendingMessages=new Set(),pendingRaw=[];
 function scheduleFlush(){if(autoSendTimer!==null)return;autoSendTimer=setTimeout(()=>{autoSendTimer=null;flushAutoSend();},80);}
-function scheduleAutoSend(ids){ids.forEach(i=>pendingMessages.add(i));scheduleFlush();}
-function scheduleRaw(hexString){pendingRaw.push(hexString);scheduleFlush();}
+function scheduleAutoSend(ids){suppressStartupPart2Replacement();ids.forEach(i=>pendingMessages.add(i));scheduleFlush();}
+function scheduleRaw(hexString){suppressStartupPart2Replacement();pendingRaw.push(hexString);scheduleFlush();}
 function scheduleStateRead(){if(stateReadTimer!==null)clearTimeout(stateReadTimer);stateReadTimer=setTimeout(()=>{stateReadTimer=null;requestPerformanceState(false);},260);}
 function parseHex(str){return str.trim().split(/\s+/).map(v=>parseInt(v,16));}
 // Production mode: send MIDI without constructing or storing a diagnostic log.
@@ -437,7 +437,7 @@ function changeReverb(delta){const v=Math.max(0,Math.min(10,Number($("reverb").v
 function bindRepeatButton(id,delta){const el=$(id);let delay=null,repeat=null,suppressClick=false;const stop=()=>{if(delay!==null)clearTimeout(delay);if(repeat!==null)clearInterval(repeat);delay=null;repeat=null;};el.addEventListener("pointerdown",e=>{if(e.button!==undefined&&e.button!==0)return;e.preventDefault();suppressClick=true;changeReverb(delta);delay=setTimeout(()=>{repeat=setInterval(()=>changeReverb(delta),110);},420);});["pointerup","pointercancel","pointerleave"].forEach(name=>el.addEventListener(name,stop));el.addEventListener("click",()=>{if(suppressClick){suppressClick=false;return;}changeReverb(delta);});}bindRepeatButton("reverbMinus",-1);bindRepeatButton("reverbPlus",1);
 $("pianoResonance").addEventListener("change",()=>{if(resonanceAvailable(selectedPatch(1))){resonancePreference=$("pianoResonance").checked;}updateResonanceAvailability();actionMessages("resonance").forEach(scheduleRaw);});
 [1,2].forEach(part=>{["prev","next"].forEach(dir=>$(dir+"Patch"+part).addEventListener("click",()=>choosePatch(part,dir==="prev"?-1:1)));});
-function selectActivePart(part){if(activePart===part)return;activePart=part;updateOutput();syncModWheel();if(mode()!=="Single Tone")return;const out=chosenMidiOutput();if(out){const list=activationMessages(part);try{list.forEach(s=>sendLogged(out, checkedOutgoing(s)));$("midiNotice").textContent=`Part ${part} selected.`;scheduleStateRead();}catch(err){$("midiNotice").textContent=`MIDI error: ${err.name||"Error"}: ${err.message||String(err)}`;}}}
+function selectActivePart(part){if(activePart===part)return;suppressStartupPart2Replacement();activePart=part;updateOutput();syncModWheel();if(mode()!=="Single Tone")return;const out=chosenMidiOutput();if(out){const list=activationMessages(part);try{list.forEach(s=>sendLogged(out, checkedOutgoing(s)));$("midiNotice").textContent=`Part ${part} selected.`;scheduleStateRead();}catch(err){$("midiNotice").textContent=`MIDI error: ${err.name||"Error"}: ${err.message||String(err)}`;}}}
 $("selectPart1").addEventListener("click",()=>selectActivePart(1));$("selectPart2").addEventListener("click",()=>selectActivePart(2));
 [ ["part1Card",1], ["part2Card",2] ].forEach(([id,part])=>$(id).addEventListener("click",e=>{if(mode()!=="Single Tone")return;if(e.target.closest("select, input, button, label, a"))return;selectActivePart(part);}));
 document.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener("change",()=>{updateOutput();actionMessages("mode").forEach(scheduleRaw);syncModWheel();}));
@@ -509,6 +509,7 @@ function handleMidiMessage(event){
  // HOME normally starts with CC 0 / value 0x55 on channel 16.
  // Accept a message with extra bytes too, in case a MIDI bridge groups data.
  if((d[0]&0xF0)===0xB0&&d.length>=3&&d[1]===0x00&&d[2]===0x55){
+  suppressStartupPart2Replacement();
   const homeGeneration=++homeRestoreGeneration;
   $('presetSelect').value='default';$('split').value='C4';
   // HOME selects Part 1 Single Tone. Split Point C4 is only a UI default;
@@ -556,7 +557,7 @@ function handleMidiMessage(event){
  const a=d[10],b=d[11],addr3=d[8],addr4=d[9];
  if(addr3===0x10&&a===0x06&&b===0x01&&d.length>=15){const raw=d[12];let best=4,dist=Infinity;Object.entries(REVERB_MAP).forEach(([level,val])=>{const delta=Math.abs(val-raw);if(delta<dist){dist=delta;best=Number(level);}});$('reverb').value=String(best);updateOutput();}
  else if(addr3===0x10&&a===0x20&&b===0x04&&d.length>=18){setPatchFromReply(d[12],d[13],d[14]);$('vol1').value=String(d[15]);$('vol1Slider').value=String(d[15]);updateOutput();}
- else if(addr3===0x10&&a===0x21&&b===0x04&&d.length>=18){syncPartPatchFromReply(2,d[12],d[13],d[14]); $('vol2').value=String(d[15]);$('vol2Slider').value=String(d[15]);updateOutput();}
+ else if(addr3===0x10&&addr4===0x00&&a===0x21&&b===0x04&&d.length>=18){syncPartPatchFromReply(2,d[12],d[13],d[14]); $('vol2').value=String(d[15]);$('vol2Slider').value=String(d[15]);updateOutput();if(startupPart2Probe)finishStartupPart2Probe([d[12],d[13],d[14]]);}
  else if(addr3===0x10&&a===0x50&&b===0x00&&d.length>=28){const oct=hex(d[12]),found=Object.entries(OCTAVE_MAP).find(([label,val])=>val===oct);if(found)$('oct1').value=found[0];window._goP1Enabled=d[13]===0x01;window._goP1RangeLower=d[24];const sf=Object.entries(SPLIT_MAP).find(([label,val])=>val===d[24]);if(sf)$('split').value=sf[0];updateOutput();}
  else if(addr3===0x10&&a===0x51&&b===0x00&&d.length>=28){const oct=hex(d[12]),found=Object.entries(OCTAVE_MAP).find(([label,val])=>val===oct);if(found)$('oct2').value=found[0];window._goP2Enabled=d[13]===0x01;const splitCandidate=Object.entries(SPLIT_MAP).find(([label,val])=>val-1===d[25]);if(splitCandidate)$('split').value=splitCandidate[0];if(window._goP1Enabled&&window._goP2Enabled){const p1Lower=Number(window._goP1RangeLower);const p2Upper=Number(d[25]);if(p1Lower===0x7F&&p2Upper===0x7F){activePart=2;document.querySelector('input[name="mode"][value="Single Tone"]').checked=true;}else{const isSplit=p1Lower>0&&p1Lower<0x7F&&p2Upper===p1Lower-1;document.querySelector('input[name="mode"][value="'+(isSplit?"Split":"Layer")+'"]').checked=true;}}else{activePart=1;document.querySelector('input[name="mode"][value="Single Tone"]').checked=true;}updateOutput();}
  else if(addr3===0x10&&a===0x0A&&b===0x00&&d.length>=14){window._goPianoMfxType=d[12];}
@@ -805,19 +806,52 @@ $("cancelPressKeyBtn").addEventListener("click",closePressKeyModal);
 $("pressKeyModal").addEventListener("click",e=>{if(e.target===$("pressKeyModal"))closePressKeyModal();});
 
 $("presetSelect").addEventListener("change",()=>{
+ suppressStartupPart2Replacement();
  const value=$("presetSelect").value;
  if(value==="default"){resetToDefaultPreset();return;}
  selectUserPerformance(Number(value));
 });
 $("savePresetBtn").addEventListener("click",openSaveDialog);
 
-// v67 startup: the two v54 commands tested on Android, followed by the v65 read flow.
-let startupReadTimer=null, startupReadGeneration=0;
+// At connection, read the actual Part 2 sound before optionally replacing it.
+// Only GM2 Piano 1 (MSB 121, LSB 0, PC 1) is the GO:Piano HOME placeholder.
+// A different sound must remain untouched, and a missing read response is not
+// permission to change it. This rule is for connection ONLY, not physical HOME.
+let startupReadTimer=null, startupReadGeneration=0, startupPart2Probe=null;
+let startupManualChange=false;
+function suppressStartupPart2Replacement(){startupManualChange=true;}
+function finishStartupPart2Probe(part2Address){
+ const probe=startupPart2Probe;
+ if(!probe)return;
+ startupPart2Probe=null;
+ clearTimeout(probe.timer);
+ const connected=()=>probe.generation===startupReadGeneration&&chosenMidiOutput()===probe.out;
+ if(!connected())return;
+ const isGm2Piano1=part2Address&&part2Address[0]===0x79&&part2Address[1]===0x00&&part2Address[2]===0x00;
+ const shouldReplace=isGm2Piano1&&!startupManualChange;
+ try{
+  if(shouldReplace){
+   sendLogged(probe.out,checkedOutgoing(PART2_INIT_PATCH));
+   setCat('cat2','GO:PIANO');fillPatchSelect(2,'AcousticBass');updateOutput();
+  }
+ }catch(err){$('midiNotice').textContent=`Part 2 startup restore error: ${err.message||String(err)}`;}
+ // Read the entire performance only after the optional DT1 has settled.
+ setTimeout(()=>{
+  if(!connected())return;
+  requestPerformanceState(false);
+  requestPerformanceControlChannel();
+  requestPresetNames();
+  initAlreadySent=true;
+ },shouldReplace?(probe.out===bleMidiOutput?180:80):0);
+}
+
 function requestIdentity(){
  // Historical name retained for connection entry points; no Identity Request.
- // v67 applies the two tested legacy writes before querying state.
+ // v80 applies MFX initialization, then probes Part 2 before any optional patch write.
  identityAccepted=false;identityPending=false;clearTimeout(identityTimer);
  clearTimeout(startupReadTimer);
+ if(startupPart2Probe){clearTimeout(startupPart2Probe.timer);startupPart2Probe=null;}
+ startupManualChange=false;
  const generation=++startupReadGeneration,out=chosenMidiOutput();
  if(!out)return;
  // Unknown values are not treated as empty presets until their replies arrive.
@@ -825,7 +859,7 @@ function requestIdentity(){
  presetNames.fill(null);pendingPresetNameReads.clear();
  ++presetReadGeneration;updatePresetOptions();updatePresetAvailability();
  readingPerformanceState=false;homeReadInProgress=false;
- $("midiNotice").textContent="Connected. Applying the two tested v54 setup commands…";
+ $("midiNotice").textContent="Connected. Reading Part 2 before optional AcousticBass restore…";
  startupReadTimer=setTimeout(()=>{
   if(generation!==startupReadGeneration||chosenMidiOutput()!==out)return;
   initializeDevice();
@@ -836,22 +870,21 @@ async function initializeDevice(){
  const generation=startupReadGeneration;
  const connected=()=>generation===startupReadGeneration&&chosenMidiOutput()===out;
  try{
-  // Both commands have been tested successfully on the actual Android GO:Piano.
-  // The BLE SysEx packetizer is intentionally untouched from working v65/v66.
+  // Keep the tested MFX initialization and working BLE SysEx packetizer.
+  // Do NOT write Part 2 until the instrument has reported its actual sound.
   sendLogged(out,checkedOutgoing(EFFECT_STRUCTURE));
   if(out===bleMidiOutput)await new Promise(resolve=>setTimeout(resolve,80));
   if(!connected())return;
-  sendLogged(out,checkedOutgoing(PART2_INIT_PATCH));
-  setCat("cat2","GO:PIANO");fillPatchSelect(2,"AcousticBass");updateOutput();
-  // Give the device time to apply the patch before asking it to report its state.
-  await new Promise(resolve=>setTimeout(resolve,out===bleMidiOutput?180:80));
-  if(!connected())return;
-  requestPerformanceState(false);
-  requestPerformanceControlChannel();
-  requestPresetNames();
-  initAlreadySent=true;
-  $("midiNotice").textContent="v54 initialization applied; reading GO:Piano settings and User Performance names.";
- }catch(err){$("midiNotice").textContent=`Initialization error: ${err.name||"Error"}: ${err.message||String(err)}`;}
+  const probe={out,generation,timer:null};
+  startupPart2Probe=probe;
+  // If the GO:Piano does not answer, continue normal reads without modifying Part 2.
+  probe.timer=setTimeout(()=>{if(startupPart2Probe===probe)finishStartupPart2Probe(null);},out===bleMidiOutput?2200:1500);
+  sendLogged(out,parseHex(READ_REQUESTS[2])); // RQ1 10 00 21 04: Part 2 patch + volume
+  $("midiNotice").textContent="Reading current Part 2 sound before optional initialization…";
+ }catch(err){
+  if(startupPart2Probe&&startupPart2Probe.generation===generation)finishStartupPart2Probe(null);
+  $("midiNotice").textContent=`Initialization error: ${err.name||"Error"}: ${err.message||String(err)}`;
+ }
 }
 
 // Experimental Web Bluetooth BLE-MIDI transport, used when Web MIDI exposes no ports.
@@ -965,6 +998,7 @@ async function connectBleMidi(){
  bleDevice=device;device.addEventListener("gattserverdisconnected",()=>{
   bleCharacteristic=null;bleServer=null;bleSysExBuffer=null;
   ++startupReadGeneration;++presetReadGeneration;clearTimeout(startupReadTimer);
+  if(startupPart2Probe){clearTimeout(startupPart2Probe.timer);startupPart2Probe=null;}
   if(pressKeyListening)closePressKeyModal();
   const sel=$("midiOutput");if(sel.value==="ble-midi"){sel.innerHTML="";const o=document.createElement("option");o.value="";o.textContent="Bluetooth MIDI disconnected";sel.appendChild(o);}
   $("midiStatus").textContent="Bluetooth MIDI disconnected";$("midiNotice").textContent="Bluetooth MIDI disconnected. Press Connect to reconnect.";
