@@ -243,6 +243,15 @@
 @media(max-width:360px){.knob{width:43px;height:43px}.knob-large{height:154px;width:154px}.knob-unit{flex-basis:49px}.knob-pair{gap:3px}.knob-label{font-size:10px}}
 @media(max-width:360px){.part .resonance{margin-top:4px}.part-card{padding-bottom:6px}}
 
+/* v92: reclaim space below Cutoff/Volume knobs without reducing their touch targets.
+   The old 8px top margin and 4px bottom margin were carried over from the slider UI. */
+.part-card .resonance,
+.part-card .part-resonance-space{margin-top:2px;margin-bottom:0}
+@media(max-width:360px){
+  .part-card .resonance,
+  .part-card .part-resonance-space{margin-top:0;margin-bottom:0}
+}
+
 /* v89: both displays use the same 5x7 pixel font and permanent two-glyph footprint. */
 </style>
 </head>
